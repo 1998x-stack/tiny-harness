@@ -22,7 +22,7 @@ def test_agent_register_tool():
     config = Config(model="claude-test", api_key="sk-test", workspace="/tmp")
     agent = Agent(prompt=prompt, config=config)
     def_ = ToolDef(name="echo", description="Echo", parameters={"type": "object", "properties": {}})
-    agent.tools.register_from_def(def_, lambda: "echo")
+    agent.tools.register_from_def(def_, lambda args: "echo")
     assert "echo" in agent.tools.names()
 
 

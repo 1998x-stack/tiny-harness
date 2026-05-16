@@ -10,11 +10,11 @@ def registry():
     r = ToolRegistry()
     r.register_from_def(
         ToolDef(name="echo", description="Echo input", parameters={"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}),
-        lambda message: message,
+        lambda args: args["message"],
     )
     r.register_from_def(
         ToolDef(name="failing", description="Always fails", parameters={"type": "object", "properties": {}}),
-        lambda: (_ for _ in ()).throw(RuntimeError("always fails")),
+        lambda args: (_ for _ in ()).throw(RuntimeError("always fails")),
     )
     return r
 
@@ -76,7 +76,7 @@ async def test_execute_handler_exception_becomes_error_result(registry):
 
 @pytest.mark.asyncio
 async def test_execute_tool_timeout(registry):
-    async def slow_handler():
+    async def slow_handler(args):
         await asyncio.sleep(10)
         return "done"
     registry.register_from_def(
@@ -114,7 +114,7 @@ async def test_execute_tool_suggests_similar_names(registry):
 async def test_execute_guard_blocks_outside_write(registry):
     registry.register_from_def(
         ToolDef(name="write_outside", description="Write outside", parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}, risk_level="mutation"),
-        lambda path: "ok",
+        lambda args: "ok",
     )
     guard = FilesystemGuard("/tmp/tiny_harness_test_workspace")
     executor = ToolExecutor(registry, guard, timeout_ms=5000, max_output_chars=100)
@@ -127,7 +127,7 @@ async def test_execute_guard_blocks_outside_write(registry):
 async def test_execute_guard_allows_write_inside(registry):
     registry.register_from_def(
         ToolDef(name="write_inside", description="Write inside", parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}, risk_level="mutation"),
-        lambda path: f"ok:{path}",
+        lambda args: f"ok:{args['path']}",
     )
     guard = FilesystemGuard("/tmp")
     executor = ToolExecutor(registry, guard, timeout_ms=5000, max_output_chars=100)
@@ -139,7 +139,7 @@ async def test_execute_guard_allows_write_inside(registry):
 async def test_execute_destructive_tool_blocked_outside(registry):
     registry.register_from_def(
         ToolDef(name="delete_thing", description="Delete", parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}, risk_level="destructive"),
-        lambda path: "deleted",
+        lambda args: "deleted",
     )
     guard = FilesystemGuard("/tmp/tiny_harness_test")
     executor = ToolExecutor(registry, guard, timeout_ms=5000, max_output_chars=100)
@@ -151,7 +151,7 @@ async def test_execute_destructive_tool_blocked_outside(registry):
 async def test_execute_format_none_returns_success(registry):
     registry.register_from_def(
         ToolDef(name="none_tool", description="Returns None", parameters={"type": "object", "properties": {}}),
-        lambda: None,
+        lambda args: None,
     )
     executor = ToolExecutor(registry, FilesystemGuard("/tmp"), timeout_ms=5000, max_output_chars=100)
     result = await executor.execute("none_tool", {}, "tc1")
@@ -163,7 +163,7 @@ async def test_execute_format_none_returns_success(registry):
 async def test_execute_format_dict(registry):
     registry.register_from_def(
         ToolDef(name="dict_tool", description="Returns dict", parameters={"type": "object", "properties": {}}),
-        lambda: {"key": "value"},
+        lambda args: {"key": "value"},
     )
     executor = ToolExecutor(registry, FilesystemGuard("/tmp"), timeout_ms=5000, max_output_chars=100)
     result = await executor.execute("dict_tool", {}, "tc1")
@@ -173,8 +173,8 @@ async def test_execute_format_dict(registry):
 
 @pytest.mark.asyncio
 async def test_execute_sync_handler(registry):
-    def sync_handler(message: str) -> str:
-        return message.upper()
+    def sync_handler(args):
+        return args["message"].upper()
     registry.register_from_def(
         ToolDef(name="sync_tool", description="Sync handler", parameters={"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}),
         sync_handler,
@@ -250,7 +250,7 @@ def test_tool_result_error():
 
 
 def test_tool_creation():
-    tool = Tool(definition=ToolDef(name="test", description="desc", parameters={}), handler=lambda: None)
+    tool = Tool(definition=ToolDef(name="test", description="desc", parameters={}), handler=lambda args: None)
     assert tool.definition.name == "test"
 
 

@@ -48,7 +48,9 @@ class Agent:
     def on(self, event_type: str, handler) -> None:
         async def filtered(event: StreamEvent):
             if event.type == event_type:
-                await handler(event)
+                result = handler(event)
+                if asyncio.iscoroutine(result):
+                    await result
         self._event_bus.subscribe(filtered)
 
     def load_skill(self, skill_ref: str) -> None:

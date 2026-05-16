@@ -63,7 +63,7 @@ class AgentLoop:
 
             tool_calls: list[ToolCallRequest] = []
             try:
-                async for chunk in self._llm.generate_stream(self._messages.to_list(), None):
+                async for chunk in self._llm.generate_stream(self._messages.to_list(), self._tools.get_definitions()):
                     if chunk.type == "text_delta" and chunk.content:
                         collected_text.append(chunk.content)
                         await self._events.emit(StreamEvent(type="text_delta", content=chunk.content))

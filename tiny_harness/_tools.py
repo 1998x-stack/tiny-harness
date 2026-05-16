@@ -62,6 +62,9 @@ class ToolExecutor:
         self._timeout_ms = timeout_ms
         self._max_output_chars = max_output_chars
 
+    def get_definitions(self) -> list[dict]:
+        return self._registry.get_definitions()
+
     async def execute(self, name: str, args: dict, call_id: str) -> ToolResult:
         tool = self._registry.get(name)
         if tool is None:
@@ -86,9 +89,9 @@ class ToolExecutor:
 
         try:
             if asyncio.iscoroutinefunction(tool.handler):
-                raw = await asyncio.wait_for(tool.handler(**args), timeout=self._timeout_ms / 1000)
+                raw = await asyncio.wait_for(tool.handler(args), timeout=self._timeout_ms / 1000)
             else:
-                raw = tool.handler(**args)
+                raw = tool.handler(args)
         except asyncio.TimeoutError:
             return ToolResult.error(call_id, f"Tool '{name}' timed out after {self._timeout_ms/1000}s")
         except Exception as e:

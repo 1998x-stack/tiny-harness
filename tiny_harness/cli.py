@@ -9,7 +9,7 @@ from argparse import ArgumentParser, Namespace
 def parse_args() -> Namespace:
     parser = ArgumentParser(prog="tiny-harness", description="AI agent harness with tools and streaming CLI")
     parser.add_argument("prompt", nargs="?", default=None, help="Prompt for one-shot mode")
-    parser.add_argument("--model", "-m", default="deepseek-v4-flash", help="Model identifier")
+    parser.add_argument("--model", "-m", default="deepseek-chat", help="Model identifier")
     parser.add_argument("--workspace", "-w", default=os.getcwd(), help="Workspace directory")
     parser.add_argument("--provider", default="deepseek", help="LLM provider: anthropic, openai, deepseek")
     parser.add_argument("--api-base-url", default="https://api.deepseek.com/v1", help="Custom API base URL")

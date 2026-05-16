@@ -293,6 +293,9 @@ class OpenAIProvider(LLMProvider):
                 if response.status_code != 200:
                     body_bytes = await response.aread()
                     raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
+
+                tool_buffers: dict[int, dict] = {}
+
                 async for line in response.aiter_lines():
                     line = line.strip()
                     if not line or not line.startswith("data: "):
@@ -304,13 +307,35 @@ class OpenAIProvider(LLMProvider):
                         data = json.loads(data_str)
                     except json.JSONDecodeError:
                         continue
+
                     delta = data.get("choices", [{}])[0].get("delta", {})
                     if delta.get("content"):
                         yield LLMStreamChunk(type="text_delta", content=delta["content"])
+
                     if delta.get("tool_calls"):
                         for tc in delta["tool_calls"]:
+                            idx = tc.get("index", 0)
+                            if idx not in tool_buffers:
+                                tool_buffers[idx] = {"id": "", "name": "", "arguments": ""}
+
+                            buf = tool_buffers[idx]
+                            if "id" in tc and tc["id"]:
+                                buf["id"] = tc["id"]
                             func = tc.get("function", {})
-                            if "name" in func:
-                                yield LLMStreamChunk(type="tool_call_start", content=json.dumps({"id": tc.get("id", ""), "name": func["name"]}))
+                            if "name" in func and func["name"]:
+                                buf["name"] = func["name"]
+                                yield LLMStreamChunk(type="tool_call_start", content=json.dumps({"id": buf["id"], "name": buf["name"]}))
                             if "arguments" in func:
-                                yield LLMStreamChunk(type="tool_call_delta", content=func["arguments"])
+                                buf["arguments"] += func["arguments"]
+
+                    finish = data.get("choices", [{}])[0].get("finish_reason")
+                    if finish in ("tool_calls", "stop"):
+                        for idx in sorted(tool_buffers.keys()):
+                            buf = tool_buffers[idx]
+                            if buf["name"] and buf["arguments"]:
+                                try:
+                                    args = json.loads(buf["arguments"])
+                                except json.JSONDecodeError:
+                                    args = {}
+                                tc = ToolCallRequest(id=buf["id"] or f"call_{idx}", name=buf["name"], arguments=args)
+                                yield LLMStreamChunk(type="tool_call_end", tool_call=tc)

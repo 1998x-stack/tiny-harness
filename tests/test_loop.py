@@ -98,6 +98,8 @@ class FakeExecutor:
     def __init__(self, results=None):
         self.results = results or []
         self.idx = 0
+    def get_definitions(self):
+        return []
     async def execute(self, name, args, call_id):
         r = self.results[min(self.idx, len(self.results)-1)]
         self.idx += 1
