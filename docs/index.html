@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tiny-harness — API Reference</title>
+<link rel="stylesheet" href="base-dark.css">
+<style>
+:root {
+  --c1: #58a6ff; --c1d: #1f6feb;
+  --c2: #3fb950; --c2d: #238636;
+  --c3: #d2a8ff; --c3d: #8250df;
+  --c4: #e3b341; --c4d: #9a6700;
+  --c5: #f0883e; --c5d: #bd561d;
+}
+.hero h1 em {
+  background: linear-gradient(90deg, var(--c1), var(--c3), var(--c2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+/* Sidebar nav for API docs */
+.doc-layout { display: flex; gap: 0; }
+.doc-sidebar {
+  width: 240px; flex-shrink: 0; position: sticky; top: 64px;
+  align-self: flex-start; max-height: calc(100vh - 80px); overflow-y: auto;
+  padding: 24px 0; font-size: 13px;
+}
+.doc-sidebar .sb-section {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--faint); padding: 12px 0 4px 0;
+}
+.doc-sidebar a {
+  display: block; padding: 5px 12px; border-radius: 5px;
+  color: var(--muted); transition: all .12s; margin: 1px 0;
+}
+.doc-sidebar a:hover { color: var(--text); background: var(--bg3); }
+.doc-content { flex: 1; min-width: 0; }
+/* API section styling */
+.api-sec { padding: 48px 0; border-bottom: 1px solid var(--border); }
+.api-sec-header { margin-bottom: 28px; }
+.api-sec-header .sig {
+  font-family: var(--mono); font-size: 13px; color: var(--muted);
+  background: var(--bg2); padding: 6px 14px; border-radius: 6px;
+  display: inline-block; margin-bottom: 12px;
+  border: 1px solid var(--border);
+}
+.api-sec-header .sig .kw { color: #ff7b72; }
+.api-sec-header .sig .fn { color: #d2a8ff; }
+.api-sec-header .sig .op { color: var(--muted); }
+.api-sec-header .sig .str { color: #a5d6ff; }
+.api-sec-header h3 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+.api-sec-header .brief { font-size: 14px; color: var(--muted); max-width: 680px; line-height: 1.7; }
+/* Method table */
+.meth-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 16px 0 24px; }
+.meth-table th {
+  background: var(--bg2); padding: 10px 14px; text-align: left;
+  font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+}
+.meth-table td {
+  padding: 10px 14px; border-bottom: 1px solid var(--faint); vertical-align: top; line-height: 1.65;
+}
+.meth-table tr:hover td { background: rgba(255,255,255,.015); }
+.meth-table td:first-child { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.meth-table td:nth-child(3) { font-size: 12px; color: var(--muted); max-width: 300px; }
+.rt { color: var(--c3); font-family: var(--mono); font-size: 11px; }
+.rt2 { color: var(--c2); font-family: var(--mono); font-size: 11px; }
+/* Config table compact */
+.cfg-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 20px 0; }
+.cfg-table th {
+  background: var(--bg2); padding: 9px 14px; text-align: left;
+  font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+}
+.cfg-table td { padding: 9px 14px; border-bottom: 1px solid var(--faint); vertical-align: top; line-height: 1.7; }
+.cfg-table td:first-child { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.cfg-table tr:hover td { background: rgba(255,255,255,.015); }
+/* Event types */
+.ev-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.ev-item {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px 16px;
+}
+.ev-item .ev-type { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.ev-item .ev-desc { font-size: 12px; color: var(--muted); line-height: 1.6; }
+/* Responsive sidebar */
+@media (max-width: 900px) {
+  .doc-layout { flex-direction: column; }
+  .doc-sidebar { width: 100%; position: static; max-height: none; border-bottom: 1px solid var(--border); padding: 16px 0; }
+  .api-sec-header .sig { font-size: 11px; word-break: break-all; }
+  .meth-table td:first-child { white-space: normal; }
+  .ev-list { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+<div class="nav-inner">
+  <span class="nav-brand">tiny-harness <span>v0.2 API Reference</span></span>
+  <a class="nl" href="https://github.com/1998x-stack/tiny-harness">GitHub</a>
+  <a class="nl" href="https://pypi.org/project/tiny-harness">PyPI</a>
+</div>
+</nav>
+
+<div class="page">
+<div class="doc-layout">
+
+<aside class="doc-sidebar">
+  <div class="sb-section">Overview</div>
+  <a href="#intro">Introduction</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#getting-started">Getting Started</a>
+
+  <div class="sb-section">Core API</div>
+  <a href="#agent">Agent</a>
+  <a href="#config">Config</a>
+  <a href="#prompt">Prompt</a>
+  <a href="#tooldef">ToolDef</a>
+
+  <div class="sb-section">Tool System</div>
+  <a href="#toolregistry">ToolRegistry</a>
+  <a href="#toolexecutor">ToolExecutor</a>
+  <a href="#toolresult">ToolResult</a>
+
+  <div class="sb-section">LLM Providers</div>
+  <a href="#anthropic">AnthropicProvider</a>
+  <a href="#openai">OpenAIProvider</a>
+  <a href="#llm-types">LLM Types</a>
+
+  <div class="sb-section">Events & Guard</div>
+  <a href="#events">StreamEvent & EventBus</a>
+  <a href="#guard">FilesystemGuard</a>
+  <a href="#persist">SessionStore</a>
+
+  <div class="sb-section">Reference</div>
+  <a href="#config-ref">Configuration Reference</a>
+  <a href="#skills">Built-in Skills</a>
+  <a href="#examples">Usage Examples</a>
+</aside>
+
+<main class="doc-content">
+
+<!-- ═══ HERO ═══ -->
+<section class="hero" id="intro">
+  <div class="hero-badge"><span class="dot"></span>v0.2 · Python 3.11+ · MIT License</div>
+  <h1>tiny-harness <em>API Reference</em></h1>
+  <p>Complete API documentation for building AI agents — one import, zero magic, ~1,350 lines of readable Python. Covers every public class, method, and type.</p>
+  <div class="tag-row">
+    <span class="ltag" style="color:var(--c2);border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.06)">Core API</span>
+    <span class="ltag" style="color:var(--c1);border-color:rgba(88,166,255,.3);background:rgba(88,166,255,.06)">Tool System</span>
+    <span class="ltag" style="color:var(--c3);border-color:rgba(210,168,255,.3);background:rgba(210,168,255,.06)">LLM Providers</span>
+    <span class="ltag" style="color:var(--c5);border-color:rgba(240,136,62,.3);background:rgba(240,136,62,.06)">Event System</span>
+  </div>
+</section>
+
+<!-- ═══ ARCHITECTURE ═══ -->
+<section class="flow" id="architecture">
+  <div class="sec-label">Architecture Overview</div>
+  <div class="flow-track">
+    <div class="flow-box" style="border-color:rgba(88,166,255,.25)">
+      <div class="fb-tag" style="color:var(--c1)">INPUT</div>
+      <div class="fb-name">agent.run(prompt)</div>
+      <div class="fb-sub">User prompt → Agent creates AgentLoop</div>
+      <div class="fb-file">_core.py</div>
+    </div>
+    <div class="flow-arrow"><span class="arr-icon">→</span><span class="arr-text">creates</span></div>
+    <div class="flow-box" style="border-color:rgba(63,185,80,.25)">
+      <div class="fb-tag" style="color:var(--c2)">LOOP</div>
+      <div class="fb-name">AgentLoop</div>
+      <div class="fb-sub">State machine: LLM → tool calls → results → repeat</div>
+      <div class="fb-file">_loop.py</div>
+    </div>
+    <div class="flow-arrow"><span class="arr-icon">→</span><span class="arr-text">calls</span></div>
+    <div class="flow-box" style="border-color:rgba(240,136,62,.25)">
+      <div class="fb-tag" style="color:var(--c5)">EXECUTE</div>
+      <div class="fb-name">ToolExecutor</div>
+      <div class="fb-sub">Validate → guard → execute → format result</div>
+      <div class="fb-file">_tools.py</div>
+    </div>
+    <div class="flow-arrow"><span class="arr-icon">→</span><span class="arr-text">emits</span></div>
+    <div class="flow-box" style="border-color:rgba(210,168,255,.25)">
+      <div class="fb-tag" style="color:var(--c3)">EVENTS</div>
+      <div class="fb-name">EventBus</div>
+      <div class="fb-sub">Stream events to subscribers (text, tools, errors)</div>
+      <div class="fb-file">_events.py</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ GETTING STARTED ═══ -->
+<section class="layer-sec" id="getting-started">
+  <div class="layer-hdr">
+    <span class="layer-id-badge" style="background:var(--c2d);color:#fff">START</span>
+    <div class="layer-title">Getting Started</div>
+  </div>
+
+  <p class="layer-def" style="border-color:var(--c2)">
+    Import from <strong>tiny_harness</strong>: <span class="pill">Agent</span><span class="pill">Prompt</span><span class="pill">Config</span><span class="pill">ToolDef</span> are the four public exports.
+    All other classes are instantiated internally by the Agent.
+  </p>
+
+  <div class="codeblock">
+    <div class="cb-head">
+      <span class="cb-dot" style="background:#f85149"></span>
+      <span class="cb-dot" style="background:#e3b341"></span>
+      <span class="cb-dot" style="background:#3fb950"></span>
+      install.sh · Quick start
+    </div>
+    <div class="cb-body"><span class="cm"># Install</span>
+pip install tiny-harness
+
+<span class="cm"># Set API key</span>
+<span class="kw">export</span> ANTHROPIC_API_KEY=<span class="str">"sk-ant-..."</span>
+
+<span class="cm"># Run one-shot</span>
+tiny-harness <span class="str">"Create hello.py"</span>
+
+<span class="cm"># Session mode</span>
+tiny-harness --model claude-sonnet-4-20250514 --skills files
+
+<span class="cm"># TUI mode</span>
+pip install tiny-harness[tui]
+tiny-harness --tui --skills files</div>
+  </div>
+
+  <div class="codeblock">
+    <div class="cb-head">
+      <span class="cb-dot" style="background:#f85149"></span>
+      <span class="cb-dot" style="background:#e3b341"></span>
+      <span class="cb-dot" style="background:#3fb950"></span>
+      python · Python API minimal example
+    </div>
+    <div class="cb-body"><span class="kw">from</span> tiny_harness <span class="kw">import</span> <span class="fn">Agent</span>, <span class="fn">Prompt</span>, <span class="fn">Config</span>
+<span class="kw">import</span> os
+
+agent = <span class="fn">Agent</span>(
+    prompt=<span class="fn">Prompt</span>(<span class="str">"You are a helpful assistant."</span>),
+    config=<span class="fn">Config</span>(
+        model=<span class="str">"deepseek-chat"</span>,
+        api_key=os.environ[<span class="str">"DEEPSEEK_API_KEY"</span>],
+        workspace=<span class="str">"."</span>,
+    )
+)
+agent.load_skill(<span class="str">"files"</span>)
+result = <span class="kw">await</span> agent.run(<span class="str">"Create hello.py"</span>)</div>
+  </div>
+</section>
+
+<!-- ═══ AGENT ═══ -->
+<section class="api-sec" id="agent">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">class</span> <span class="fn">Agent</span></div>
+    <h3>Agent</h3>
+    <p class="brief">The main orchestrator. Creates all components at init — LLM provider, tool registry, filesystem guard, event bus, message manager. The only class users construct directly.</p>
+  </div>
+
+  <p class="layer-def" style="border-color:var(--c1)">
+    <strong>Constructor:</strong> <code>Agent(prompt: Prompt, config: Config, store: SessionStore | None = None)</code>
+  </p>
+
+  <table class="meth-table">
+    <thead><tr><th style="width:220px">Method</th><th style="width:90px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr>
+      <td>__init__(prompt, config, store=None)</td>
+      <td class="rt2">—</td>
+      <td>Creates the agent. Builds LLMProvider, ToolRegistry, ToolExecutor, FilesystemGuard, EventBus, MessageManager internally. Optional <span class="pill">store</span> for session persistence.</td>
+    </tr>
+    <tr>
+      <td>run(prompt: str)</td>
+      <td class="rt2">str</td>
+      <td>Execute a single prompt synchronously (async). Returns the LLM's final text response. Raises <span class="pill">RuntimeError</span> if already running.</td>
+    </tr>
+    <tr>
+      <td>run_stream(prompt: str)</td>
+      <td class="rt2">AsyncIterator[StreamEvent]</td>
+      <td>Stream execution events as they happen. Yields <span class="pill">StreamEvent</span> objects for text deltas, tool calls, errors, and iteration progress.</td>
+    </tr>
+    <tr>
+      <td>load_skill(skill_ref: str)</td>
+      <td class="rt2">None</td>
+      <td>Load a skill by name (<span class="str">"files"</span>), Python module path, or file path. Resolves via <span class="pill">tiny_harness.skills.{name}</span> → import → file. Idempotent: loading twice is a no-op.</td>
+    </tr>
+    <tr>
+      <td>clear()</td>
+      <td class="rt2">None</td>
+      <td>Reset the conversation history. Retains the system prompt (first message).</td>
+    </tr>
+    <tr>
+      <td>start_session(session_id=None)</td>
+      <td class="rt2">str</td>
+      <td>Start a new persistence session. Returns the session ID. Creates a <span class="pill">SessionStore</span> if none was provided at init.</td>
+    </tr>
+    <tr>
+      <td>on(event_type: str, handler)</td>
+      <td class="rt2">None</td>
+      <td>Subscribe to events matching <span class="pill">event_type</span>. Handler receives a <span class="pill">StreamEvent</span>. Supports both sync and async handlers.</td>
+    </tr>
+    </tbody>
+  </table>
+
+  <table class="meth-table">
+    <thead><tr><th style="width:220px">Property</th><th style="width:90px">Type</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>tools</td><td><span class="rt">ToolRegistry</span></td><td>Access the tool registry to register custom tools.</td></tr>
+    <tr><td>events</td><td><span class="rt">EventBus</span></td><td>Direct access to the event bus for advanced subscription patterns.</td></tr>
+    <tr><td>session_id</td><td><span class="rt">str | None</span></td><td>The current session ID if a session was started.</td></tr>
+    <tr><td>store</td><td><span class="rt">SessionStore | None</span></td><td>The session store if one is active.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══ CONFIG ═══ -->
+<section class="api-sec" id="config">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">@dataclass</span> <span class="kw">class</span> <span class="fn">AgentConfig</span></div>
+    <h3>Config <small>(alias: AgentConfig)</small></h3>
+    <p class="brief">All agent configuration in one dataclass. Exported as <code>Config</code> from the public API.</p>
+  </div>
+
+  <p class="layer-def" style="border-color:var(--c4)">
+    Import as <strong>from tiny_harness import Config</strong>. Underlying class is <strong>AgentConfig</strong>.
+  </p>
+
+  <table class="cfg-table">
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>model</td><td>str</td><td><em>required</em></td><td>Model identifier (e.g. <span class="str">"claude-sonnet-4-20250514"</span>, <span class="str">"gpt-4o"</span>, <span class="str">"deepseek-chat"</span>)</td></tr>
+    <tr><td>api_key</td><td>str</td><td><em>required</em></td><td>Provider API key</td></tr>
+    <tr><td>workspace</td><td>str</td><td><em>required</em></td><td>Root directory for file operations. All file paths are resolved relative to this.</td></tr>
+    <tr><td>provider</td><td>str</td><td><span class="str">"deepseek"</span></td><td>LLM provider: <span class="str">"anthropic"</span>, <span class="str">"openai"</span>, or <span class="str">"deepseek"</span></td></tr>
+    <tr><td>api_base_url</td><td>str | None</td><td>None</td><td>Custom API endpoint. Defaults to provider standard (only used for openai/deepseek).</td></tr>
+    <tr><td>max_iterations</td><td>int</td><td>25</td><td>Maximum loop iterations before forcing a degraded finish.</td></tr>
+    <tr><td>max_errors</td><td>int</td><td>10</td><td>Total tool error budget across all iterations.</td></tr>
+    <tr><td>max_consecutive_errors</td><td>int</td><td>3</td><td>Consecutive tool errors before aborting.</td></tr>
+    <tr><td>timeout_ms</td><td>int</td><td>30_000</td><td>Per-tool execution timeout in milliseconds (30s default).</td></tr>
+    <tr><td>max_tool_result_chars</td><td>int</td><td>50_000</td><td>Truncate tool results exceeding this character count.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="codeblock">
+    <div class="cb-head">
+      <span class="cb-dot" style="background:#f85149"></span>
+      <span class="cb-dot" style="background:#e3b341"></span>
+      <span class="cb-dot" style="background:#3fb950"></span>
+      python · Config examples
+    </div>
+    <div class="cb-body"><span class="cm"># Minimal config</span>
+config = <span class="fn">Config</span>(model=<span class="str">"claude-sonnet-4-20250514"</span>, api_key=<span class="str">"sk-..."</span>, workspace=<span class="str">"."</span>)
+
+<span class="cm"># DeepSeek with custom endpoint</span>
+config = <span class="fn">Config</span>(
+    model=<span class="str">"deepseek-chat"</span>, api_key=<span class="str">"sk-..."</span>, workspace=<span class="str">"."</span>,
+    provider=<span class="str">"deepseek"</span>, api_base_url=<span class="str">"https://api.deepseek.com/v1"</span>,
+)
+
+<span class="cm"># OpenAI with safety tuning</span>
+config = <span class="fn">Config</span>(
+    model=<span class="str">"gpt-4o"</span>, api_key=<span class="str">"sk-..."</span>, workspace=<span class="str">"."</span>,
+    provider=<span class="str">"openai"</span>, max_iterations=<span class="num">10</span>, timeout_ms=<span class="num">15_000</span>,
+)</div>
+  </div>
+</section>
+
+<!-- ═══ PROMPT ═══ -->
+<section class="api-sec" id="prompt">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">class</span> <span class="fn">Prompt</span></div>
+    <h3>Prompt</h3>
+    <p class="brief">First-class artifact for building the system prompt. Separate from Config (ADR 002). Supports compositional section appending.</p>
+  </div>
+
+  <table class="meth-table">
+    <thead><tr><th>Method</th><th style="width:90px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>__init__(base: str)</td><td class="rt2">—</td><td>Create a prompt with a base section. This becomes the first section.</td></tr>
+    <tr><td>append(section: str)</td><td class="rt2">None</td><td>Add a new section. Sections are joined with <span class="str">"\n\n"</span> when serialized.</td></tr>
+    <tr><td>to_string()</td><td class="rt2">str</td><td>Join all sections with double newlines. Called internally by MessageManager to produce the system message.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="cb-dot" style="background:#f85149"></span><span class="cb-dot" style="background:#e3b341"></span><span class="cb-dot" style="background:#3fb950"></span>python · Prompt composition</div>
+    <div class="cb-body">prompt = <span class="fn">Prompt</span>(<span class="str">"You are a helpful assistant."</span>)
+prompt.append(<span class="str">"Always use tools when you need to access files."</span>)
+prompt.append(<span class="str">"Be concise in your responses."</span>)
+<span class="cm"># Result: "You are...\n\nAlways use...\n\nBe concise..."</span></div>
+  </div>
+</section>
+
+<!-- ═══ TOOLDEF ═══ -->
+<section class="api-sec" id="tooldef">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">@dataclass</span> <span class="kw">class</span> <span class="fn">ToolDef</span></div>
+    <h3>ToolDef</h3>
+    <p class="brief">Defines a tool's contract: name, description, JSON Schema parameters, and risk level for filesystem guarding.</p>
+  </div>
+
+  <table class="cfg-table">
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>name</td><td>str</td><td><em>required</em></td><td>Unique tool identifier. Used by LLM to request tool calls.</td></tr>
+    <tr><td>description</td><td>str</td><td><em>required</em></td><td>Human-readable description sent to the LLM as tool instructions.</td></tr>
+    <tr><td>parameters</td><td>dict</td><td><em>required</em></td><td>JSON Schema object describing expected arguments. Must have <span class="str">"type": "object"</span> with <span class="str">"properties"</span> and <span class="str">"required"</span>.</td></tr>
+    <tr><td>risk_level</td><td>str</td><td><span class="str">"read_only"</span></td><td>Filesystem risk: <span class="str">"safe"</span> (no guard), <span class="str">"read_only"</span> (read check), <span class="str">"mutation"</span> (write check), <span class="str">"destructive"</span> (delete check).</td></tr>
+    </tbody>
+  </table>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="cb-dot" style="background:#f85149"></span><span class="cb-dot" style="background:#e3b341"></span><span class="cb-dot" style="background:#3fb950"></span>python · Custom tool registration</div>
+    <div class="cb-body"><span class="kw">from</span> tiny_harness <span class="kw">import</span> <span class="fn">ToolDef</span>
+
+<span class="cm"># Define a tool</span>
+weather_def = <span class="fn">ToolDef</span>(
+    name=<span class="str">"weather"</span>,
+    description=<span class="str">"Get current weather for a city."</span>,
+    parameters={
+        <span class="str">"type"</span>: <span class="str">"object"</span>,
+        <span class="str">"properties"</span>: {<span class="str">"city"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>}},
+        <span class="str">"required"</span>: [<span class="str">"city"</span>],
+    },
+    risk_level=<span class="str">"safe"</span>,
+)
+
+<span class="cm"># Register with agent</span>
+agent.tools.register_from_def(weather_def, handler=<span class="kw">lambda</span> args: <span class="str">f"Sunny, 22°C in {args['city']}"</span>)</div>
+  </div>
+</section>
+
+<!-- ═══ TOOL SYSTEM ═══ -->
+<section class="api-sec" id="toolregistry">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">class</span> <span class="fn">ToolRegistry</span></div>
+    <h3>ToolRegistry</h3>
+    <p class="brief">In-memory registry of all registered tools. Accessed via <code>agent.tools</code>.</p>
+  </div>
+
+  <table class="meth-table">
+    <thead><tr><th>Method</th><th style="width:110px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>register(tool: Tool)</td><td class="rt2">None</td><td>Register a <span class="pill">Tool</span> object (internal). Prefer <span class="pill">register_from_def</span>.</td></tr>
+    <tr><td>register_from_def(def_: ToolDef, handler: Callable)</td><td class="rt2">None</td><td>Register a tool from a <span class="pill">ToolDef</span> and handler function. <strong>This is the user-facing API.</strong></td></tr>
+    <tr><td>get(name: str)</td><td class="rt2">Tool | None</td><td>Look up a tool by name. Returns None if not found.</td></tr>
+    <tr><td>get_definitions()</td><td class="rt2">list[dict]</td><td>Returns tool definitions in LLM-compatible format for API requests.</td></tr>
+    <tr><td>names()</td><td class="rt2">list[str]</td><td>Return all registered tool names. Used for typo suggestions on missing tools.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="api-sec" id="toolexecutor">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">class</span> <span class="fn">ToolExecutor</span></div>
+    <h3>ToolExecutor</h3>
+    <p class="brief">Executes tool calls: validates arguments against JSON Schema, enforces filesystem guard, runs the handler with timeout, formats results.</p>
+  </div>
+
+  <table class="meth-table">
+    <thead><tr><th>Method</th><th style="width:110px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>execute(name, args, call_id)</td><td class="rt2">ToolResult</td><td>Validate schema → guard workspace → execute handler (with timeout) → format output. Returns <span class="pill">ToolResult</span> with success/error status.</td></tr>
+    <tr><td>get_definitions()</td><td class="rt2">list[dict]</td><td>Proxy to <span class="pill">ToolRegistry.get_definitions()</span>.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="layer-def" style="border-color:var(--c2);margin-top:24px">
+    <strong>Execution pipeline:</strong> <code>name lookup → JSON Schema validation → filesystem guard → handler(args) → output formatting</code>.
+    Typo suggestions via <code>difflib.get_close_matches</code>. Timeout via <code>asyncio.wait_for</code>.
+    Results exceeding <code>max_tool_result_chars</code> are truncated with a note.
+  </p>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="card">
+      <div class="card-title">Sync Handler</div>
+      <div class="cb-body" style="padding:8px 0;font-size:12px"><span class="kw">def</span> <span class="fn">my_tool</span>(args: dict) <span class="op">-></span> str:
+    <span class="kw">return</span> <span class="str">f"Hello {args['name']}"</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Async Handler</div>
+      <div class="cb-body" style="padding:8px 0;font-size:12px"><span class="kw">async def</span> <span class="fn">my_tool</span>(args: dict) <span class="op">-></span> str:
+    result = <span class="kw">await</span> fetch_data(args[<span class="str">'url'</span>])
+    <span class="kw">return</span> result</div>
+    </div>
+  </div>
+</section>
+
+<section class="api-sec" id="toolresult">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">@dataclass</span> <span class="kw">class</span> <span class="fn">ToolResult</span></div>
+    <h3>ToolResult</h3>
+    <p class="brief">Return value from tool execution. Success/error status with content.</p>
+  </div>
+
+  <table class="cfg-table">
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>success</td><td>bool</td><td>Whether the tool executed successfully.</td></tr>
+    <tr><td>tool_call_id</td><td>str</td><td>The LLM-assigned tool call ID for matching results to requests.</td></tr>
+    <tr><td>content</td><td>str</td><td>Result text or error message.</td></tr>
+    </tbody>
+  </table>
+
+  <table class="meth-table">
+    <thead><tr><th>Class Method</th><th style="width:110px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>ok(call_id, content)</td><td class="rt2">ToolResult</td><td>Create a success result.</td></tr>
+    <tr><td>error(call_id, message)</td><td class="rt2">ToolResult</td><td>Create an error result. The message is sent back to the LLM for self-correction.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══ LLM PROVIDERS ═══ -->
+<section class="api-sec" id="anthropic">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">class</span> <span class="fn">AnthropicProvider</span>(LLMProvider)</div>
+    <h3>AnthropicProvider</h3>
+    <p class="brief">Native Anthropic API provider. Uses SSE streaming, handles tool use content blocks, implements exponential backoff retry.</p>
+  </div>
+
+  <table class="meth-table">
+    <thead><tr><th>Method</th><th style="width:130px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>__init__(api_key, model, retry_config=None)</td><td class="rt2">—</td><td>Create provider. Optional <span class="pill">LLMRetryConfig</span> for custom retry behavior.</td></tr>
+    <tr><td>generate(messages, tools=None)</td><td class="rt2">LLMResponse</td><td>Non-streaming call. Converts messages to Anthropic format (extracts system). Retries on 429/529/5xx with exponential backoff.</td></tr>
+    <tr><td>generate_stream(messages, tools=None)</td><td class="rt2">AsyncIterator[LLMStreamChunk]</td><td>SSE streaming. Yields <span class="pill">text_delta</span>, <span class="pill">tool_call_start</span>, <span class="pill">tool_call_delta</span>, <span class="pill">tool_call_end</span> chunks.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="layer-def" style="border-color:var(--c3);margin-top:16px">
+    <strong>Message conversion:</strong> System messages extracted into the <code>system</code> field (Anthropic API requirement).
+    Tool definitions converted to Anthropic format with <code>input_schema</code>. Max tokens: 16,384.
+  </p>
+</section>
+
+<section class="api-sec" id="openai">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">class</span> <span class="fn">OpenAIProvider</span>(LLMProvider)</div>
+    <h3>OpenAIProvider</h3>
+    <p class="brief">OpenAI-compatible API provider. Works with OpenAI, DeepSeek, and any OpenAI-compatible endpoint. Buffers streaming tool call JSON deltas.</p>
+  </div>
+
+  <table class="meth-table">
+    <thead><tr><th>Method</th><th style="width:130px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>__init__(api_key, model, base_url, retry_config=None)</td><td class="rt2">—</td><td>Create provider with custom base URL. Default: <span class="str">"https://api.openai.com/v1"</span>.</td></tr>
+    <tr><td>generate(messages, tools=None)</td><td class="rt2">LLMResponse</td><td>Non-streaming call. Converts tools to <span class="pill">{"type": "function", "function": {...}}</span> format. Same retry logic as Anthropic.</td></tr>
+    <tr><td>generate_stream(messages, tools=None)</td><td class="rt2">AsyncIterator[LLMStreamChunk]</td><td>SSE streaming. Buffers tool call JSON fragments (<span class="pill">tool_buffers</span>) and emits complete <span class="pill">ToolCallRequest</span> at <span class="pill">tool_call_end</span>.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="api-sec" id="llm-types">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">@dataclass</span></div>
+    <h3>LLM Types</h3>
+    <p class="brief">Data types used across the LLM abstraction layer.</p>
+  </div>
+
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title">LLMResponse</div>
+      <ul>
+        <li><strong>text</strong> <em>str | None</em> — text response</li>
+        <li><strong>tool_calls</strong> <em>list[ToolCallRequest]</em></li>
+        <li><strong>usage</strong> <em>TokenUsage</em> — input/output tokens</li>
+        <li><strong>finish_reason</strong> <em>str</em> — stop reason</li>
+        <li><strong>is_final()</strong> — True when no tool calls</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">ToolCallRequest</div>
+      <ul>
+        <li><strong>id</strong> <em>str</em> — LLM-assigned call ID</li>
+        <li><strong>name</strong> <em>str</em> — tool name</li>
+        <li><strong>arguments</strong> <em>dict</em> — parsed arguments</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">LLMStreamChunk</div>
+      <ul>
+        <li><strong>type</strong> <em>str</em> — chunk type</li>
+        <li><strong>content</strong> <em>str | None</em> — text/json</li>
+        <li><strong>tool_call</strong> <em>ToolCallRequest | None</em></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="card">
+      <div class="card-title">LLMRetryConfig</div>
+      <ul>
+        <li><strong>max_retries</strong> <em>int = 3</em></li>
+        <li><strong>base_delay</strong> <em>float = 1.0s</em></li>
+        <li><strong>max_delay</strong> <em>float = 60.0s</em></li>
+        <li><strong>backoff_factor</strong> <em>float = 2.0</em></li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">TokenUsage</div>
+      <ul>
+        <li><strong>input_tokens</strong> <em>int</em></li>
+        <li><strong>output_tokens</strong> <em>int</em></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ EVENTS ═══ -->
+<section class="api-sec" id="events">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">@dataclass(frozen=True)</span> <span class="kw">class</span> <span class="fn">StreamEvent</span></div>
+    <h3>StreamEvent &amp; EventBus</h3>
+    <p class="brief">Immutable event objects emitted during agent execution. Subscribe via <code>agent.on()</code> or <code>agent.events.subscribe()</code>.</p>
+  </div>
+
+  <div class="ev-list">
+    <div class="ev-item">
+      <div class="ev-type">text_delta</div>
+      <div class="ev-desc">Partial text from LLM streaming. <span class="pill">content</span> contains the fragment.</div>
+    </div>
+    <div class="ev-item">
+      <div class="ev-type">tool_start</div>
+      <div class="ev-desc">Tool execution begins. <span class="pill">tool_name</span> and <span class="pill">content</span> (JSON args).</div>
+    </div>
+    <div class="ev-item">
+      <div class="ev-type">tool_end</div>
+      <div class="ev-desc">Tool execution complete. <span class="pill">tool_name</span> and <span class="pill">content</span> (result preview, first 100 chars).</div>
+    </div>
+    <div class="ev-item">
+      <div class="ev-type">iteration</div>
+      <div class="ev-desc">Loop iteration tick. <span class="pill">num</span> (current iter), <span class="pill">max</span> (max iters), <span class="pill">content</span> (token count).</div>
+    </div>
+    <div class="ev-item">
+      <div class="ev-type">error</div>
+      <div class="ev-desc">Error condition. <span class="pill">message</span> contains the error description.</div>
+    </div>
+    <div class="ev-item">
+      <div class="ev-type">end</div>
+      <div class="ev-desc">Agent finished. <span class="pill">content</span> contains final answer text.</div>
+    </div>
+  </div>
+
+  <div class="codeblock" style="margin-top:16px">
+    <div class="cb-head"><span class="cb-dot" style="background:#f85149"></span><span class="cb-dot" style="background:#e3b341"></span><span class="cb-dot" style="background:#3fb950"></span>python · Event subscription patterns</div>
+    <div class="cb-body"><span class="cm"># Pattern 1: agent.on() convenience method</span>
+agent.on(<span class="str">"tool_start"</span>, <span class="kw">lambda</span> e: <span class="fn">print</span>(<span class="str">f"→ {e.tool_name}"</span>))
+agent.on(<span class="str">"error"</span>, <span class="kw">lambda</span> e: <span class="fn">print</span>(<span class="str">f"✗ {e.message}"</span>))
+
+<span class="cm"># Pattern 2: direct EventBus access</span>
+<span class="kw">async def</span> <span class="fn">handle_all</span>(event):
+    <span class="kw">print</span>(<span class="str">f"[{event.type}] {event.content or ''}"</span>)
+
+agent.events.subscribe(handle_all)
+
+<span class="cm"># Pattern 3: streaming with async for</span>
+<span class="kw">async for</span> event <span class="kw">in</span> agent.run_stream(<span class="str">"Create hello.py"</span>):
+    <span class="kw">if</span> event.type == <span class="str">"text_delta"</span>:
+        <span class="fn">print</span>(event.content, end=<span class="str">""</span>, flush=<span class="kw">True</span>)</div>
+  </div>
+</section>
+
+<!-- ═══ GUARD ═══ -->
+<section class="api-sec" id="guard">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">class</span> <span class="fn">FilesystemGuard</span></div>
+    <h3>FilesystemGuard</h3>
+    <p class="brief">Workspace boundary enforcement. Prevents path traversal and access outside the configured workspace.</p>
+  </div>
+
+  <table class="meth-table">
+    <thead><tr><th>Method</th><th style="width:110px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>__init__(workspace: str)</td><td class="rt2">—</td><td>Store the resolved absolute workspace path.</td></tr>
+    <tr><td>resolve(path: str)</td><td class="rt2">str</td><td>Expand ~, resolve relative to workspace, normalize via <span class="pill">os.path.realpath</span>. Raises <span class="pill">PathAccessError</span> on null bytes or resolution failure.</td></tr>
+    <tr><td>guard(path, operation)</td><td class="rt2">str</td><td>Resolve path and verify it's within workspace. Raises <span class="pill">PathAccessError</span> if outside. Returns resolved path.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="layer-def" style="border-color:var(--c4)">
+    <strong>Risk levels:</strong> <span class="pill">safe</span> tools skip the guard entirely. <span class="pill">read_only</span>, <span class="pill">mutation</span>, and <span class="pill">destructive</span> tools pass through the guard before execution. The <span class="pill">PathAccessError</span> is caught by ToolExecutor and returned as a <span class="pill">ToolResult.error</span>.
+  </p>
+</section>
+
+<!-- ═══ PERSIST ═══ -->
+<section class="api-sec" id="persist">
+  <div class="api-sec-header">
+    <div class="sig"><span class="kw">class</span> <span class="fn">SessionStore</span></div>
+    <h3>SessionStore</h3>
+    <p class="brief">JSONL-based session persistence. Stores conversation turns in <code>~/.tiny-harness/sessions/</code> by default.</p>
+  </div>
+
+  <table class="meth-table">
+    <thead><tr><th>Method</th><th style="width:110px">Returns</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td>__init__(base_dir=None)</td><td class="rt2">—</td><td>Create store. Default path: <span class="str">"~/.tiny-harness/sessions/"</span>.</td></tr>
+    <tr><td>new_session()</td><td class="rt2">str</td><td>Generate a 12-char hex session ID.</td></tr>
+    <tr><td>save_turn(session_id, chat_id, role, ...)</td><td class="rt2">None</td><td>Append a JSON record to the session file. Supports content, tool_calls, tool_results, token_usage, model, iteration, metadata.</td></tr>
+    <tr><td>load_session(session_id)</td><td class="rt2">list[dict]</td><td>Read all turns for a session from the JSONL file.</td></tr>
+    <tr><td>list_sessions()</td><td class="rt2">list[dict]</td><td>List all sessions sorted by modification time. Each entry has session_id, created, updated, turns, model, file.</td></tr>
+    <tr><td>delete_session(session_id)</td><td class="rt2">bool</td><td>Delete a session file. Returns True if deleted.</td></tr>
+    <tr><td>export_session(session_id)</td><td class="rt2">dict</td><td>Export session as a dict with all records for serialization.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="cb-dot" style="background:#f85149"></span><span class="cb-dot" style="background:#e3b341"></span><span class="cb-dot" style="background:#3fb950"></span>python · Session persistence</div>
+    <div class="cb-body"><span class="kw">from</span> tiny_harness <span class="kw">import</span> <span class="fn">Agent</span>, <span class="fn">Prompt</span>, <span class="fn">Config</span>
+<span class="kw">from</span> tiny_harness._persist <span class="kw">import</span> <span class="fn">SessionStore</span>
+
+store = <span class="fn">SessionStore</span>()
+agent = <span class="fn">Agent</span>(
+    prompt=<span class="fn">Prompt</span>(<span class="str">"You are helpful."</span>),
+    config=<span class="fn">Config</span>(model=<span class="str">"deepseek-chat"</span>, api_key=<span class="str">"sk-..."</span>, workspace=<span class="str">"."</span>),
+    store=store,
+)
+agent.start_session()  <span class="cm"># returns session ID</span>
+<span class="kw">await</span> agent.run(<span class="str">"Hello"</span>)  <span class="cm"># automatically saved</span>
+
+<span class="cm"># Later: list sessions</span>
+<span class="kw">for</span> s <span class="kw">in</span> store.list_sessions():
+    <span class="fn">print</span>(<span class="str">f"{s['session_id']}: {s['turns']} turns, model={s['model']}"</span>)</div>
+  </div>
+</section>
+
+<!-- ═══ CONFIG REFERENCE ═══ -->
+<section class="layer-sec" id="config-ref">
+  <div class="layer-hdr">
+    <span class="layer-id-badge" style="background:var(--c4d);color:#fff">REF</span>
+    <div class="layer-title">Configuration Reference</div>
+  </div>
+
+  <table class="stab">
+    <thead><tr><th style="width:200px">Field</th><th style="width:100px">Type</th><th style="width:120px">Default</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td><code>model</code></td><td>str</td><td><em>required</em></td><td>Model identifier string sent to the provider API.</td></tr>
+    <tr><td><code>api_key</code></td><td>str</td><td><em>required</em></td><td>API key for the selected provider.</td></tr>
+    <tr><td><code>workspace</code></td><td>str</td><td><em>required</em></td><td>Root directory for all file operations. Relative paths are resolved against this.</td></tr>
+    <tr><td><code>provider</code></td><td>str</td><td class="impl"><code>"deepseek"</code></td><td>One of: <code>"anthropic"</code>, <code>"openai"</code>, <code>"deepseek"</code>.</td></tr>
+    <tr><td><code>api_base_url</code></td><td>str | None</td><td class="plan">None</td><td>Custom API endpoint. Only used for openai/deepseek providers.</td></tr>
+    <tr><td><code>max_iterations</code></td><td>int</td><td class="impl">25</td><td>Hard cap on agent loop iterations. Exceeding triggers degraded finish.</td></tr>
+    <tr><td><code>max_errors</code></td><td>int</td><td class="impl">10</td><td>Total tool error budget. Exhausting triggers degraded finish.</td></tr>
+    <tr><td><code>max_consecutive_errors</code></td><td>int</td><td class="impl">3</td><td>Consecutive tool error budget. 3 failures in a row → degraded finish.</td></tr>
+    <tr><td><code>timeout_ms</code></td><td>int</td><td class="impl">30_000</td><td>Per-tool execution timeout in milliseconds.</td></tr>
+    <tr><td><code>max_tool_result_chars</code></td><td>int</td><td class="impl">50_000</td><td>Truncate tool results exceeding this size. LLM context protection.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══ BUILT-IN SKILLS ═══ -->
+<section class="layer-sec" id="skills">
+  <div class="layer-hdr">
+    <span class="layer-id-badge" style="background:var(--c1d);color:#fff">SKILLS</span>
+    <div class="layer-title">Built-in Skills</div>
+  </div>
+
+  <p class="layer-def" style="border-color:var(--c1)">
+    Skills are packaged bundles of tools + prompt instructions. Load with <code>agent.load_skill("name")</code>.
+    Each skill has a <code>register(agent)</code> function that wires its tools and prompt sections into the agent.
+  </p>
+
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title">files <em style="text-transform:none;font-weight:400">(default in CLI)</em></div>
+      <ul>
+        <li><strong>read_file</strong> — read with offset/limit</li>
+        <li><strong>write_file</strong> — create or overwrite</li>
+        <li><strong>list_directory</strong> — with pattern/recursive</li>
+        <li><strong>find_files</strong> — glob search</li>
+        <li><strong>delete_file</strong> — remove file</li>
+        <li><strong>create_directory</strong> — mkdir -p</li>
+        <li><strong>move_file</strong> — rename/move</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">shell</div>
+      <ul>
+        <li><strong>execute_command</strong> — run shell command with timeout</li>
+        <li><strong>environment_info</strong> — OS, Python version, env vars</li>
+        <li>Risk level: <em>mutation</em></li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">search</div>
+      <ul>
+        <li><strong>grep</strong> — regex search across files</li>
+        <li><strong>ast_grep</strong> — AST-aware pattern search</li>
+        <li><strong>glob</strong> — file pattern matching</li>
+        <li><strong>read</strong> — file reading</li>
+        <li><strong>lsp_symbols</strong> — symbol lookup</li>
+        <li>Risk level: <em>read_only</em></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="codeblock" style="margin-top:16px">
+    <div class="cb-head"><span class="cb-dot" style="background:#f85149"></span><span class="cb-dot" style="background:#e3b341"></span><span class="cb-dot" style="background:#3fb950"></span>python · Loading skills</div>
+    <div class="cb-body"><span class="cm"># Load a single skill</span>
+agent.load_skill(<span class="str">"files"</span>)
+
+<span class="cm"># Load multiple skills</span>
+agent.load_skill(<span class="str">"files"</span>)
+agent.load_skill(<span class="str">"shell"</span>)
+agent.load_skill(<span class="str">"search"</span>)
+
+<span class="cm"># Load from a Python module path</span>
+agent.load_skill(<span class="str">"my_package.my_skill"</span>)
+
+<span class="cm"># Load from a file path</span>
+agent.load_skill(<span class="str">"./custom_skill.py"</span>)
+
+<span class="cm"># Idempotent: loading same skill twice is a no-op</span>
+agent.load_skill(<span class="str">"files"</span>)  <span class="cm"># no error, silently skipped</span></div>
+  </div>
+</section>
+
+<!-- ═══ EXAMPLES ═══ -->
+<section class="layer-sec" id="examples">
+  <div class="layer-hdr">
+    <span class="layer-id-badge" style="background:var(--c5d);color:#fff">EXAMPLES</span>
+    <div class="layer-title">Usage Examples</div>
+  </div>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="cb-dot" style="background:#f85149"></span><span class="cb-dot" style="background:#e3b341"></span><span class="cb-dot" style="background:#3fb950"></span>python · Basic chat with streaming</div>
+    <div class="cb-body"><span class="kw">from</span> tiny_harness <span class="kw">import</span> <span class="fn">Agent</span>, <span class="fn">Prompt</span>, <span class="fn">Config</span>
+<span class="kw">import</span> os
+
+agent = <span class="fn">Agent</span>(
+    prompt=<span class="fn">Prompt</span>(<span class="str">"You are a helpful assistant."</span>),
+    config=<span class="fn">Config</span>(model=<span class="str">"claude-sonnet-4-20250514"</span>, api_key=os.environ[<span class="str">"ANTHROPIC_API_KEY"</span>], workspace=<span class="str">"."</span>),
+)
+
+<span class="cm"># Sync</span>
+result = <span class="kw">await</span> agent.run(<span class="str">"Explain what an AI agent is in one paragraph."</span>)
+<span class="fn">print</span>(result)
+
+<span class="cm"># Streaming</span>
+<span class="kw">async for</span> event <span class="kw">in</span> agent.run_stream(<span class="str">"Write a haiku about coding."</span>):
+    <span class="kw">if</span> event.type == <span class="str">"text_delta"</span>:
+        <span class="fn">print</span>(event.content, end=<span class="str">""</span>, flush=<span class="kw">True</span>)</div>
+  </div>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="cb-dot" style="background:#f85149"></span><span class="cb-dot" style="background:#e3b341"></span><span class="cb-dot" style="background:#3fb950"></span>python · Custom tool with validation</div>
+    <div class="cb-body"><span class="kw">from</span> tiny_harness <span class="kw">import</span> <span class="fn">Agent</span>, <span class="fn">Prompt</span>, <span class="fn">Config</span>, <span class="fn">ToolDef</span>
+<span class="kw">import</span> json, os
+
+agent = <span class="fn">Agent</span>(
+    prompt=<span class="fn">Prompt</span>(<span class="str">"You are a calculator assistant. Use tools for math."</span>),
+    config=<span class="fn">Config</span>(model=<span class="str">"deepseek-chat"</span>, api_key=os.environ[<span class="str">"DEEPSEEK_API_KEY"</span>], workspace=<span class="str">"."</span>),
+)
+
+<span class="cm"># Register calculator tool</span>
+agent.tools.register_from_def(
+    <span class="fn">ToolDef</span>(
+        name=<span class="str">"calculate"</span>,
+        description=<span class="str">"Evaluate a math expression. Supports +, -, *, /, **, ()."</span>,
+        parameters={
+            <span class="str">"type"</span>: <span class="str">"object"</span>,
+            <span class="str">"properties"</span>: {<span class="str">"expression"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>, <span class="str">"description"</span>: <span class="str">"Math expression to evaluate"</span>}},
+            <span class="str">"required"</span>: [<span class="str">"expression"</span>],
+        },
+        risk_level=<span class="str">"safe"</span>,
+    ),
+    handler=<span class="kw">lambda</span> args: <span class="str">f"Result: {eval(args['expression'])}"</span>,
+)
+
+result = <span class="kw">await</span> agent.run(<span class="str">"What is (15 * 7) + (120 / 4)?"</span>)
+<span class="fn">print</span>(result)  <span class="cm"># "105 + 30 = 135"</span></div>
+  </div>
+
+  <div class="codeblock">
+    <div class="cb-head"><span class="cb-dot" style="background:#f85149"></span><span class="cb-dot" style="background:#e3b341"></span><span class="cb-dot" style="background:#3fb950"></span>python · Session persistence</div>
+    <div class="cb-body"><span class="kw">from</span> tiny_harness <span class="kw">import</span> <span class="fn">Agent</span>, <span class="fn">Prompt</span>, <span class="fn">Config</span>
+<span class="kw">from</span> tiny_harness._persist <span class="kw">import</span> <span class="fn">SessionStore</span>
+<span class="kw">import</span> os
+
+store = <span class="fn">SessionStore</span>()
+agent = <span class="fn">Agent</span>(
+    prompt=<span class="fn">Prompt</span>(<span class="str">"You are a coding assistant."</span>),
+    config=<span class="fn">Config</span>(model=<span class="str">"deepseek-chat"</span>, api_key=os.environ[<span class="str">"DEEPSEEK_API_KEY"</span>], workspace=<span class="str">"."</span>),
+    store=store,
+)
+
+session_id = agent.start_session()
+<span class="fn">print</span>(<span class="str">f"Session: {session_id}"</span>)
+
+<span class="kw">await</span> agent.run(<span class="str">"I like snakes."</span>)
+<span class="kw">await</span> agent.run(<span class="str">"Write a Python snake game."</span>)
+
+<span class="cm"># Later: review session</span>
+records = store.load_session(session_id)
+<span class="fn">print</span>(<span class="str">f"Saved {len(records)} turns"</span>)</div>
+  </div>
+</section>
+
+</main>
+</div></div><!-- .page -->
+
+<footer class="footer">
+  tiny-harness — Minimal AI agent harness. Built with <a href="https://github.com/1998x-stack/tiny-harness" style="color:var(--muted)">Python 3.11+</a>.
+</footer>
+
+</body>
+</html>
