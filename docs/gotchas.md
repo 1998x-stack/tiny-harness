@@ -289,9 +289,9 @@ pip install tiny-harness[tui]
 
 Without it, `--tui` shows an error and exits.
 
-### TUI uses `asyncio.to_thread(input)` — blocking but reliable
+### TUI uses `asyncio.to_thread(input)` for input
 
-The TUI's input uses `asyncio.to_thread(sys.stdin.readline)`. This blocks the thread but keeps the async event loop responsive for Live refresh. Raw tty input was removed because it was Unix-only and fragile.
+User input uses `asyncio.to_thread(input, "> ")` — blocks the thread but keeps the async event loop responsive. The `>` prompt appears below the Rich layout. Never use Rich input widgets with `Live` — they fight for terminal control.
 
 ### Text blocks flush before tool calls
 
@@ -300,6 +300,10 @@ Each assistant text response is rendered as its own Markdown panel. When the age
 ### Token display shows raw count when <1000
 
 `[Iter 1/25 | Tokens: 0K]` is misleading — the actual count might be 250 tokens. The display now shows `250 tokens` for counts under 1000, and `2K tokens` for 2000+.
+
+### TUI uses `console.clear()` + `console.print()` — no Live, no Layout
+
+The TUI avoids Rich's `Live` and `Layout` entirely. It renders via `Console.clear()` + `Console.print()` which never conflicts with `input()`. Simple, reliable, no terminal state corruption.
 
 ---
 

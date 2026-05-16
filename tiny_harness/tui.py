@@ -1,329 +1,161 @@
 # tiny_harness/tui.py
-"""Rich TUI mode — full-featured terminal UI with markdown rendering, scrollable conversation."""
-from __future__ import annotations
+"""Rich TUI mode — color-coded terminal UI with streaming output."""
 
 import asyncio
 import time
 
-from tiny_harness._core import Agent
 
-# ── Theme color constants (plain strings, no rich dependency) ────────────────
-HEADER_BG = "#0d1117"
-BORDER_C = "#30363d"
-USER_C = "#58a6ff"
-AGENT_C = "#c9d1d9"
-TOOL_C = "#d29922"
-ERROR_C = "#f85149"
-SUCCESS_C = "#3fb950"
-DIM_C = "#8b949e"
-BG = "#0d1117"
-
-
-class TuiSession:
-    def __init__(self, agent: Agent, model: str):
-        self.agent = agent
-        self.model = model
-        self.conversation: list = []
-        self.iteration = 0
-        self.max_iterations = agent.max_iterations
-        self.tokens_used = 0
-        self.tool_calls_count = 0
-        self.errors_count = 0
-        self.start_time = time.time()
-        self._build_layout()
-
-    def _build_layout(self):
-        Layout = _import_rich("rich.layout", "Layout")
-        self.layout = Layout()
-        self.layout.split(
-            Layout(name="header", size=3),
-            Layout(name="body"),
-            Layout(name="input", size=3),
-        )
-
-    def _header(self):
-        Style, Table, Panel = _import_rich_multi("Style", "Table", "Panel")
-        elapsed = time.time() - self.start_time
-        grid = Table.grid(padding=(0, 2))
-        grid.add_column(style=Style(color=USER_C, bold=True), width=16)
-        grid.add_column(style=Style(color=AGENT_C), width=24)
-        grid.add_column(style=Style(color=DIM_C), justify="right", width=18)
-        grid.add_column(style=Style(color=TOOL_C), justify="right", width=12)
-        grid.add_column(style=Style(color=DIM_C), justify="right", width=10)
-
-        tokens_str = f"{self.tokens_used}" if self.tokens_used < 1000 else f"{self.tokens_used // 1000}K"
-        grid.add_row(
-            " tiny-harness",
-            f" {self.model}",
-            f"Iter {self.iteration}/{self.max_iterations}",
-            f"{tokens_str} tokens",
-            f"{elapsed:.0f}s",
-        )
-        border_style = Style(color=BORDER_C)
-        return Panel(grid, style=border_style, padding=(0, 1))
-
-    def _conversation(self, user_input: str = ""):
-        Style, Panel, Markdown, Text = _import_rich_multi("Style", "Panel", "Markdown", "Text")
-
-        if not self.conversation and not user_input:
-            welcome = Markdown(
-                "# tiny-harness\n\n"
-                "Type your prompt below and press **Enter**.\n\n"
-                "Commands: `/help` `/tools` `/clear` `/save` `/exit`"
-            )
-            border_style = Style(color=BORDER_C)
-            return Panel(welcome, border_style=border_style, padding=(1, 2))
-
-        parts: list = list(self.conversation[-50:])
-
-        if user_input:
-            parts.append(Text(""))
-            parts.append(Panel(
-                Text(f"> {user_input}", style=Style(color=USER_C, bold=True)),
-                border_style=Style(color=USER_C),
-                padding=(0, 1),
-            ))
-
-        from rich.console import Group
-        return Panel(
-            Group(*parts),
-            border_style=Style(color=BORDER_C),
-            padding=(1, 1),
-        )
-
-    def _input_line(self):
-        Style, Panel, Text = _import_rich_multi("Style", "Panel", "Text")
-        return Panel(
-            Text("> ", style=Style(color=DIM_C, italic=True)),
-            border_style=Style(color=SUCCESS_C),
-            padding=(0, 1),
-            title="Prompt",
-            title_align="left",
-        )
-
-    def render(self, user_input: str = "") -> None:
-        self.layout["header"].update(self._header())
-        self.layout["body"].update(self._conversation(user_input))
-        self.layout["input"].update(self._input_line())
-
-    # ── Message builders ───────────────────────────────────────────────────
-
-    def add_user(self, content: str) -> None:
-        Style, Panel, Markdown, Text = _import_rich_multi("Style", "Panel", "Markdown", "Text")
-        self.conversation.append(Text(""))
-        self.conversation.append(Panel(
-            Markdown(content),
-            border_style=Style(color=USER_C),
-            title="You",
-            title_align="left",
-            padding=(0, 1),
-        ))
-
-    def add_assistant_text(self, text: str) -> None:
-        Style, Panel, Markdown, Text = _import_rich_multi("Style", "Panel", "Markdown", "Text")
-        self.conversation.append(Text(""))
-        self.conversation.append(Panel(
-            Markdown(text, code_theme="github-dark"),
-            border_style=Style(color=BORDER_C),
-            title="Agent",
-            title_align="left",
-            padding=(0, 1),
-        ))
-
-    def add_tool_call(self, tool_name: str, args_str: str, duration_ms: int | None = None) -> None:
-        Style, Text = _import_rich_multi("Style", "Text")
-        content = Text()
-        content.append("⚡ ", style=Style(color=TOOL_C))
-        content.append(tool_name, style=Style(color=TOOL_C, bold=True))
-
-        try:
-            import json
-            args = json.loads(args_str)
-            short = " ".join(f"{k}={str(v)[:40]}" for k, v in list(args.items())[:3])
-            content.append(f"  {short}", style=Style(color=DIM_C, italic=True))
-        except Exception:
-            pass
-
-        if duration_ms is not None:
-            content.append(f"  ({duration_ms}ms)", style=Style(color=DIM_C, italic=True))
-
-        self.conversation.append(content)
-        self.tool_calls_count += 1
-
-    def add_tool_result(self, result: str) -> None:
-        Style, Text = _import_rich_multi("Style", "Text")
-        self.conversation.append(Text(f"     {result[:120]}", style=Style(color=SUCCESS_C)))
-
-    def add_error(self, message: str) -> None:
-        Style, Panel, Text = _import_rich_multi("Style", "Panel", "Text")
-        self.conversation.append(Panel(
-            Text(message, style=Style(color=ERROR_C)),
-            border_style=Style(color=ERROR_C),
-            padding=(0, 1),
-        ))
-        self.errors_count += 1
-
-    def update_status(self, iteration: int, tokens: int) -> None:
-        self.iteration = iteration
-        self.tokens_used = tokens
-
-
-async def run_tui_session(agent: Agent, model: str):
+async def run_tui_session(agent, model: str):
     if not _rich_available():
         print("Error: 'rich' library required. Install with: pip install rich")
         return
 
-    Live, Style, Panel, Markdown, Text = _import_rich_multi("Live", "Style", "Panel", "Markdown", "Text")
+    import rich.console
+    import rich.style
+    import rich.markdown
 
-    tui = TuiSession(agent, model)
-    screen = True
+    console = rich.console.Console()
+    md = rich.markdown.Markdown
 
-    with Live(tui.layout, refresh_per_second=15, screen=screen) as live:
-        tui.render()
-        live.refresh()
+    c = {
+        "user": rich.style.Style(color="#58a6ff", bold=True),
+        "agent": rich.style.Style(color="#c9d1d9"),
+        "tool": rich.style.Style(color="#d29922"),
+        "err": rich.style.Style(color="#f85149"),
+        "ok": rich.style.Style(color="#3fb950"),
+        "dim": rich.style.Style(color="#8b949e", italic=True),
+        "bold": rich.style.Style(bold=True),
+    }
 
-        while True:
-            try:
-                user_input = await asyncio.to_thread(input, "> ")
-            except (KeyboardInterrupt, EOFError):
-                tui.conversation.append(
-                    Text("\nSession ended.", style=Style(color=DIM_C, italic=True))
-                )
-                tui.render()
-                live.refresh()
-                await asyncio.sleep(1)
-                return
+    start_time = time.time()
+    iteration = 0
+    max_iter = agent.max_iterations
 
-            prompt = user_input.strip()
-            if not prompt:
-                continue
+    console.print(f"  tiny-harness  |  {model}  |  max {max_iter} iter", style=c["bold"])
+    console.print("  type /help for commands", style=c["dim"])
+    console.print()
 
-            if prompt == "/exit" or prompt == "/quit":
-                tui.conversation.append(
-                    Text("\nSession ended.", style=Style(color=DIM_C, italic=True))
-                )
-                tui.render()
-                live.refresh()
-                await asyncio.sleep(1)
-                return
+    while True:
+        try:
+            user_input = await asyncio.to_thread(input, "> ")
+        except (KeyboardInterrupt, EOFError):
+            console.print("Session ended.", style=c["dim"])
+            return
 
-            if prompt == "/help":
-                tui.conversation.append(Markdown(
-                    "**Commands:** `/exit` `/help` `/tools` `/clear` `/save` `/history`"
-                ))
-                tui.render()
-                live.refresh()
-                continue
+        prompt = user_input.strip()
+        if not prompt:
+            continue
 
-            if prompt == "/tools":
-                names = agent.tools.names()
-                tui.conversation.append(Panel(
-                    Text(f"**{len(names)} tools:** {', '.join(names)}"),
-                    border_style=Style(color=BORDER_C),
-                ))
-                tui.render()
-                live.refresh()
-                continue
+        if prompt == "/exit" or prompt == "/quit":
+            console.print("Session ended.", style=c["dim"])
+            return
 
-            if prompt == "/clear":
-                agent.clear()
-                tui.conversation.clear()
-                tui.conversation.append(
-                    Text("Conversation cleared.", style=Style(color=DIM_C, italic=True))
-                )
-                tui.iteration = 0
-                tui.tokens_used = 0
-                tui.tool_calls_count = 0
-                tui.errors_count = 0
-                tui.start_time = time.time()
-                tui.render()
-                live.refresh()
-                continue
+        if prompt == "/help":
+            console.print()
+            console.print("  /exit     end session", style=c["dim"])
+            console.print("  /help     show commands", style=c["dim"])
+            console.print("  /tools    list available tools", style=c["dim"])
+            console.print("  /clear    reset conversation", style=c["dim"])
+            console.print("  /save     save session to disk", style=c["dim"])
+            console.print("  /history  list saved sessions", style=c["dim"])
+            console.print()
+            continue
 
-            if prompt == "/save":
-                agent.start_session()
-                turns = agent._dump_conversation()
-                sid = agent.session_id
-                tui.conversation.append(Panel(
-                    Text(
-                        f"Session saved: {sid} ({turns} turns) → ~/.tiny-harness/sessions/{sid}.jsonl",
-                        style=Style(color=SUCCESS_C),
-                    ),
-                    border_style=Style(color=SUCCESS_C),
-                ))
-                tui.render()
-                live.refresh()
-                continue
+        if prompt == "/tools":
+            console.print()
+            names = agent.tools.names()
+            for name in sorted(names):
+                tool = agent.tools.get(name)
+                desc = tool.definition.description if tool and tool.definition else ""
+                console.print(f"  {name}", style=c["tool"], end="")
+                if desc:
+                    console.print(f"  {desc[:60]}", style=c["dim"])
+                else:
+                    console.print()
+            console.print()
+            continue
 
-            tui.conversation.append(Text(""))
-            tui.conversation.append(Panel(
-                Markdown(prompt),
-                border_style=Style(color=USER_C),
-                title="You",
-                title_align="left",
-                padding=(0, 1),
-            ))
+        if prompt == "/clear":
+            agent.clear()
+            iteration = 0
+            start_time = time.time()
+            console.print("Conversation cleared.", style=c["dim"])
+            console.print()
+            continue
 
-            agent_text = ""
+        if prompt == "/save":
+            agent.start_session()
+            turns = agent._dump_conversation()
+            sid = agent.session_id
+            console.print(f"  Saved: {sid}  ({turns} turns)", style=c["ok"])
+            console.print()
+            continue
 
-            try:
-                async for event in agent.run_stream(prompt):
-                    if event.type == "iteration":
-                        tui.update_status(event.num or 0, agent.estimate_tokens())
-                        # Flush accumulated text before new iteration
-                        if agent_text.strip():
-                            tui.conversation.append(Text(""))
-                            tui.conversation.append(Panel(
-                                Markdown(agent_text.strip(), code_theme="github-dark"),
-                                border_style=Style(color=BORDER_C),
-                                title="Agent",
-                                title_align="left",
-                                padding=(0, 1),
-                            ))
-                            agent_text = ""
-                    elif event.type == "text_delta" and event.content:
-                        agent_text += event.content
-                    elif event.type == "tool_start":
-                        # Flush any text before tool call
-                        if agent_text.strip():
-                            tui.conversation.append(Text(""))
-                            tui.conversation.append(Panel(
-                                Markdown(agent_text.strip(), code_theme="github-dark"),
-                                border_style=Style(color=BORDER_C),
-                                title="Agent",
-                                title_align="left",
-                                padding=(0, 1),
-                            ))
-                            agent_text = ""
-                        tui.add_tool_call(event.tool_name or "?", event.content or "")
-                    elif event.type == "tool_end" and event.content:
-                        tui.add_tool_result(event.content)
-                    elif event.type == "error":
-                        tui.add_error(event.message or "unknown error")
+        if prompt == "/history":
+            if agent.store:
+                sessions = agent.store.list_sessions()
+                if sessions:
+                    console.print(f"  {len(sessions)} session(s):", style=c["dim"])
+                    for s in sessions[:10]:
+                        console.print(f"    {s['session_id']}  {s['turns']} turns  {s['model']}  {s['updated'][:19]}", style=c["dim"])
+                else:
+                    console.print("  No saved sessions.", style=c["dim"])
+            else:
+                console.print("  No sessions yet. Use /save first.", style=c["dim"])
+            console.print()
+            continue
 
-                    tui.render()
-                    live.refresh()
+        # ── Run agent ─────────────────────────────────────────────────────
+        console.print("You:", style=c["user"])
+        console.print(f"  {prompt}", style=c["agent"])
+        console.print()
 
-                # Final text block
-                if agent_text.strip():
-                    tui.conversation.append(Text(""))
-                    tui.conversation.append(Panel(
-                        Markdown(agent_text.strip(), code_theme="github-dark"),
-                        border_style=Style(color=BORDER_C),
-                        title="Agent",
-                        title_align="left",
-                        padding=(0, 1),
-                    ))
+        agent_text = ""
+        try:
+            async for event in agent.run_stream(prompt):
+                if event.type == "iteration":
+                    iteration = event.num or 0
+                    elapsed = int(time.time() - start_time)
+                    tokens = agent.estimate_tokens()
+                    tok_str = f"{tokens}" if tokens < 1000 else f"{tokens // 1000}K"
+                    if agent_text.strip():
+                        console.print(md(agent_text.strip(), code_theme="github-dark"))
+                        agent_text = ""
+                    console.print(f"  [iter {iteration}/{max_iter}  {tok_str} tok  {elapsed}s]", style=c["dim"])
 
-            except Exception as e:
-                tui.add_error(str(e))
+                elif event.type == "text_delta" and event.content:
+                    agent_text += event.content
 
-            tui.conversation.append(Text(""))
-            tui.render()
-            live.refresh()
+                elif event.type == "tool_start":
+                    if agent_text.strip():
+                        console.print(md(agent_text.strip(), code_theme="github-dark"))
+                        agent_text = ""
+                    args = ""
+                    if event.content:
+                        try:
+                            import json
+                            a = json.loads(event.content)
+                            args = " ".join(f"{k}={str(v)[:40]}" for k, v in list(a.items())[:3])
+                        except Exception:
+                            pass
+                    console.print(f"  ⚡ {event.tool_name}  {args}", style=c["tool"])
 
+                elif event.type == "tool_end" and event.content:
+                    result = event.content[:200].replace("\n", " ").strip()
+                    console.print(f"     {result}", style=c["ok"])
 
-# ── Rich import helpers ──────────────────────────────────────────────────────
+                elif event.type == "error":
+                    console.print(f"  ⚠ {event.message}", style=c["err"])
+
+            if agent_text.strip():
+                console.print(md(agent_text.strip(), code_theme="github-dark"))
+
+        except Exception as e:
+            console.print(f"  ⚠ {e}", style=c["err"])
+
+        console.print()
+        agent_text = ""
+
 
 def _rich_available() -> bool:
     try:
@@ -331,35 +163,3 @@ def _rich_available() -> bool:
         return True
     except ImportError:
         return False
-
-
-def _import_rich(module: str, attr: str):
-    import importlib
-    return getattr(importlib.import_module(module), attr)
-
-
-def _import_rich_multi(*attrs: str):
-    import importlib
-
-    attr_to_module = {
-        "Live": "rich.live",
-        "Layout": "rich.layout",
-        "Panel": "rich.panel",
-        "Text": "rich.text",
-        "Table": "rich.table",
-        "Markdown": "rich.markdown",
-        "Style": "rich.style",
-        "Group": "rich.console",
-    }
-
-    modules = {}
-    results = []
-    for attr in attrs:
-        mod_name = attr_to_module.get(attr)
-        if mod_name is None:
-            raise ImportError(f"Unknown rich attribute: {attr}")
-        if mod_name not in modules:
-            modules[mod_name] = importlib.import_module(mod_name)
-        results.append(getattr(modules[mod_name], attr))
-
-    return tuple(results) if len(results) > 1 else results[0]
