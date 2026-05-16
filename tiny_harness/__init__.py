@@ -1,0 +1,6 @@
+# tiny_harness/__init__.py
+from tiny_harness._config import AgentConfig as Config, Prompt
+from tiny_harness._tools import ToolDef
+from tiny_harness._core import Agent
+
+__all__ = ["Agent", "Prompt", "Config", "ToolDef"]
