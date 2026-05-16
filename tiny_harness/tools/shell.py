@@ -1,6 +1,8 @@
 # tiny_harness/tools/shell.py
 import subprocess
 
+MAX_OUTPUT_CHARS = 50_000
+
 
 def run_command(args: dict) -> str:
     command = args["command"]
@@ -23,6 +25,8 @@ def run_command(args: dict) -> str:
             output = f"[exit code: {result.returncode}]\n{output}"
         if not output.strip():
             output = "(no output)"
+        if len(output) > MAX_OUTPUT_CHARS:
+            output = output[:MAX_OUTPUT_CHARS] + f"\n\n[... truncated at {MAX_OUTPUT_CHARS} characters]"
         return output
     except subprocess.TimeoutExpired:
         return f"Error: Command timed out after {timeout}s"

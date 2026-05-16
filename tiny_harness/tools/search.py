@@ -14,7 +14,7 @@ def search_content(args: dict) -> str:
         cmd = ["rg", "--line-number", "--no-heading", "--color=never",
                "--max-count", str(max_results), "--no-ignore",
                "--glob", "!.git", "--glob", "!__pycache__", "--glob", "!*.pyc",
-               pattern]
+               pattern, path if os.path.isdir(path) else os.path.dirname(path) or "."]
         result = subprocess.run(
             cmd,
             capture_output=True, text=True, timeout=10, cwd=path,
@@ -23,7 +23,7 @@ def search_content(args: dict) -> str:
             raise RuntimeError(result.stderr)
         lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
     except (FileNotFoundError, Exception):
-        lines = _fallback_grep(pattern, path, file_pattern)
+        lines = _fallback_grep(pattern, path, file_pattern, max_results)
 
     if file_pattern:
         lines = [ln for ln in lines if _match_file(ln, file_pattern)]
@@ -43,26 +43,40 @@ def search_content(args: dict) -> str:
     return result
 
 
-def _fallback_grep(pattern: str, path: str, file_pattern: str | None) -> list[str]:
+def _fallback_grep(pattern: str, path: str, file_pattern: str | None, max_results: int = 100) -> list[str]:
     results = []
     try:
         compiled = re.compile(pattern)
     except re.error:
         return [f"Error: invalid regex pattern '{pattern}'"]
 
+    if os.path.isfile(path):
+        results = _grep_file(path, compiled, file_pattern, max_results)
+        return results[:max_results]
+
     for root, dirs, files in os.walk(path):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for f in files:
+            if len(results) >= max_results:
+                return results
             if file_pattern and not _match_filename(f, file_pattern):
                 continue
             fpath = os.path.join(root, f)
-            try:
-                with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
-                    for i, line in enumerate(fh, 1):
-                        if compiled.search(line):
-                            results.append(f"{fpath}:{i}:{line.rstrip()}")
-            except Exception:
-                pass
+            results.extend(_grep_file(fpath, compiled, None, max_results - len(results)))
+    return results[:max_results]
+
+
+def _grep_file(fpath: str, compiled, file_pattern: str | None, max_results: int | None = None) -> list[str]:
+    results = []
+    try:
+        with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
+            for i, line in enumerate(fh, 1):
+                if compiled.search(line):
+                    results.append(f"{fpath}:{i}:{line.rstrip()}")
+                    if max_results and len(results) >= max_results:
+                        return results
+    except Exception:
+        pass
     return results
 
 
