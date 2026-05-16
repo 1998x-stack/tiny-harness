@@ -1,6 +1,5 @@
 # tests/test_tui.py
 """Tests for the Rich TUI module."""
-import pytest
 from tiny_harness import Agent, Prompt, Config
 from tiny_harness.tui import TuiSession, _rich_available
 

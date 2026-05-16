@@ -1,5 +1,4 @@
 # tests/test_messages.py
-import json
 from tiny_harness._config import Prompt
 from tiny_harness._messages import MessageManager, TokenStatus, TokenBudget
 from tiny_harness._llm import ToolCallRequest

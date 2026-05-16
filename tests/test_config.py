@@ -1,5 +1,4 @@
 # tests/test_config.py
-import pytest
 from tiny_harness._config import AgentConfig, Prompt
 
 

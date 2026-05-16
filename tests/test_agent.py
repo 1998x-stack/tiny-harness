@@ -45,7 +45,6 @@ def test_agent_clear():
 
 
 def test_agent_config_fields():
-    prompt = Prompt("You are helpful.")
     config = Config(model="gpt-4o", api_key="k", workspace="/tmp", provider="openai", api_base_url="https://api.openai.com/v1", max_iterations=10)
     assert config.provider == "openai"
     assert config.api_base_url == "https://api.openai.com/v1"

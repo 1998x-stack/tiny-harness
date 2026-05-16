@@ -1,7 +1,6 @@
 # tests/test_llm_provider.py
 import json
-import pytest
-from tiny_harness._llm import AnthropicProvider, LLMRetryConfig
+from tiny_harness._llm import AnthropicProvider, LLMRetryConfig, OpenAIProvider
 
 
 def test_convert_messages_extracts_system():
@@ -118,9 +117,6 @@ def test_retry_config_defaults():
     assert config.max_retries == 3
     assert config.base_delay == 1.0
     assert config.max_delay == 60.0
-
-
-from tiny_harness._llm import OpenAIProvider
 
 
 def test_openai_provider_convert_messages_passthrough():

@@ -1,20 +1,14 @@
 # tiny_harness/tui.py
 """Rich TUI mode for tiny-harness — real-time streaming display with panels."""
 import asyncio
-import os
 import time
-from datetime import datetime
 from rich.live import Live
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
 from rich.console import RenderableType
-from rich.spinner import Spinner
-from rich import box
 from rich.style import Style
-from rich.align import Align
-from tiny_harness._events import StreamEvent
 from tiny_harness._core import Agent
 
 

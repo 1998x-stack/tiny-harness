@@ -1,7 +1,6 @@
 # tiny_harness/cli.py
 import os
 import sys
-import json
 import asyncio
 from argparse import ArgumentParser, Namespace
 

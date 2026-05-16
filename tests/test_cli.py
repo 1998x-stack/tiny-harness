@@ -1,6 +1,5 @@
 # tests/test_cli.py
 import sys
-import pytest
 from unittest.mock import patch
 from tiny_harness.cli import parse_args
 

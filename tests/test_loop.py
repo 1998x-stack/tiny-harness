@@ -1,6 +1,12 @@
 # tests/test_loop.py
 import pytest
 from tiny_harness._loop import ErrorBudget, LoopDetector
+from tiny_harness._config import AgentConfig, Prompt
+from tiny_harness._messages import MessageManager
+from tiny_harness._events import EventBus
+from tiny_harness._tools import ToolResult
+from tiny_harness._loop import AgentLoop
+from tiny_harness._llm import LLMStreamChunk, ToolCallRequest
 
 
 def test_error_budget_records_errors():
@@ -64,16 +70,6 @@ def test_error_budget_reset():
     assert budget.record_error() is False
     budget.reset()
     assert budget.record_error() is True
-
-
-import asyncio
-import pytest
-from tiny_harness._config import AgentConfig, Prompt
-from tiny_harness._messages import MessageManager
-from tiny_harness._events import EventBus
-from tiny_harness._tools import ToolExecutor, ToolResult, ToolRegistry
-from tiny_harness._loop import AgentLoop
-from tiny_harness._llm import LLMStreamChunk, ToolCallRequest
 
 
 class FakeProvider:

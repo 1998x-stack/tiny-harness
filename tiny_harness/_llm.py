@@ -1,5 +1,5 @@
 # tiny_harness/_llm.py
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections.abc import AsyncIterator
 from abc import ABC, abstractmethod
 from typing import Any
