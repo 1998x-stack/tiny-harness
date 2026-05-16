@@ -3,8 +3,8 @@
 **Minimal AI agent harness — wrap any LLM with tools and a streaming CLI.**
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-63%20passed-brightgreen)](https://github.com/1998x-stack/tiny-harness/actions)
-[![Lines](https://img.shields.io/badge/code-1%2C125%20lines-lightgrey)](.)
+[![Tests](https://img.shields.io/badge/tests-147%20passed-brightgreen)](https://github.com/1998x-stack/tiny-harness/actions)
+[![Lines](https://img.shields.io/badge/code-1%2C350%20lines-lightgrey)](.)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 `tiny-harness` is a ~1,100-line Python package that turns an LLM into an AI agent — giving it tools, a conversation loop, streaming events, and a CLI session. One dependency. One import.
@@ -38,6 +38,7 @@ result = await agent.run("Create hello.py")  # agent writes the file
 - **Multi-provider** — Anthropic (native) and OpenAI/DeepSeek (compatible) providers
 - **Skills** — packaged bundles of tools + prompt instructions, loaded with `agent.load_skill("files")`
 - **CLI** — session REPL with streaming output, one-shot mode for scripts
+- **Rich TUI** — optional `--tui` mode with panels, colors, real-time status bar (`pip install tiny-harness[tui]`)
 - **Filesystem guard** — workspace boundary enforcement, path traversal protection
 - **1,125 lines** — readable top-to-bottom, CleanRL-inspired code style
 
@@ -79,6 +80,32 @@ Done! Created hello.py.
 ```
 
 Session commands: `/exit`, `/help`, `/tools`, `/clear`.
+
+### TUI Mode
+
+```bash
+pip install tiny-harness[tui]
+tiny-harness --tui --model claude-sonnet-4-20250514 --skills files
+```
+
+```
+┌─ tiny-harness ─────────────────────────────────────────┐
+│  claude-sonnet-4  │  Iter 3/25  │  4.2K tokens  │  12s │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  You: Create a hello.py file                           │
+│                                                         │
+│  Let me create that file for you.                       │
+│    ⚡ write_file  path=hello.py content=print(...)     │
+│       Created hello.py (1 line, 22B)                    │
+│  Done! The file is ready.                               │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│ > _                                                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+Rich-powered terminal UI with color-coded messages, tool call indicators, status bar with iteration/token/time tracking.
 
 ### DeepSeek
 

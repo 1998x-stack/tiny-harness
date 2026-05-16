@@ -40,3 +40,17 @@ def test_parse_args_with_provider():
         args = parse_args()
         assert args.provider == 'deepseek'
         assert args.api_base_url == 'https://api.deepseek.com/v1'
+
+
+def test_parse_args_tui_flag():
+    with patch.object(sys, 'argv', ['tiny-harness', '--tui']):
+        args = parse_args()
+        assert args.tui is True
+        assert args.prompt is None
+
+
+def test_parse_args_tui_with_prompt():
+    with patch.object(sys, 'argv', ['tiny-harness', '--tui', 'hello']):
+        args = parse_args()
+        assert args.tui is True
+        assert args.prompt == 'hello'

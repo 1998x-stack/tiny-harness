@@ -15,6 +15,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--api-base-url", default=None, help="Custom API base URL")
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
     parser.add_argument("--skills", default="", help="Comma-separated skill names")
+    parser.add_argument("--tui", action="store_true", help="Use rich TUI mode (requires 'rich' package)")
     parser.add_argument("--api-key-env", default="ANTHROPIC_API_KEY", help="Env var for API key")
     return parser.parse_args()
 
@@ -101,7 +102,10 @@ def main():
         if skill_name:
             agent.load_skill(skill_name)
 
-    if args.prompt:
+    if args.tui:
+        from tiny_harness.tui import run_tui_session
+        asyncio.run(run_tui_session(agent, args.model))
+    elif args.prompt:
         asyncio.run(_run_one_shot(args, agent))
     else:
         asyncio.run(_run_session(args, agent))
