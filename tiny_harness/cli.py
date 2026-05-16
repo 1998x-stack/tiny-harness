@@ -57,7 +57,7 @@ async def _run_session(args: Namespace, agent):
         if user_input == "/exit" or user_input == "/quit":
             break
         if user_input == "/help":
-            print("Commands: /exit, /help, /tools, /clear")
+            print("Commands: /exit, /help, /tools, /clear, /save, /history")
             continue
         if user_input == "/tools":
             tools = agent.tools.names()
@@ -66,6 +66,24 @@ async def _run_session(args: Namespace, agent):
         if user_input == "/clear":
             agent.clear()
             print("Conversation cleared.")
+            continue
+        if user_input == "/save":
+            agent.start_session()
+            sid = agent.session_id
+            msgs = agent._messages.to_list()
+            print(f"Session saved: {sid} ({len(msgs)} messages) -> ~/.tiny-harness/sessions/{sid}.jsonl")
+            continue
+        if user_input == "/history":
+            if agent.store:
+                sessions = agent.store.list_sessions()
+                if sessions:
+                    print(f"Sessions ({len(sessions)}):")
+                    for s in sessions[:10]:
+                        print(f"  {s['session_id']} — {s['turns']} turns, {s['model']}, {s['updated'][:19]}")
+                else:
+                    print("No saved sessions.")
+            else:
+                print("Persistence not enabled. Use /save to start.")
             continue
 
         async for event in agent.run_stream(user_input):

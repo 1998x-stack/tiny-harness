@@ -12,10 +12,11 @@ from tiny_harness._tools import ToolRegistry, ToolExecutor
 from tiny_harness._guard import FilesystemGuard
 from tiny_harness._events import EventBus, StreamEvent
 from tiny_harness._loop import AgentLoop
+from tiny_harness._persist import SessionStore
 
 
 class Agent:
-    def __init__(self, prompt: Prompt, config: AgentConfig):
+    def __init__(self, prompt: Prompt, config: AgentConfig, store: SessionStore | None = None):
         self._config = config
         self._prompt = prompt
         self._messages = MessageManager(prompt)
@@ -26,6 +27,9 @@ class Agent:
         self._event_bus = EventBus()
         self._loaded_skills: list[str] = []
         self._running = False
+        self._store = store
+        self._session_id: str | None = None
+        self._chat_id = 0
 
     def _create_provider(self, config: AgentConfig):
         match config.provider:
@@ -83,9 +87,12 @@ class Agent:
         if self._running:
             raise RuntimeError("Agent is already running a task")
         self._running = True
+        self._save_turn("user", content=prompt)
         try:
             loop = AgentLoop(self._config, self._messages, self._llm_provider, self._tool_executor, self._event_bus)
-            return await loop.run(prompt)
+            result = await loop.run(prompt)
+            self._save_turn("assistant", content=result)
+            return result
         finally:
             self._running = False
 
@@ -115,3 +122,36 @@ class Agent:
 
     def clear(self) -> None:
         self._messages.clear()
+
+    def start_session(self, session_id: str | None = None) -> str:
+        if self._store is None:
+            self._store = SessionStore()
+        self._session_id = session_id or self._store.new_session()
+        self._chat_id = 0
+        return self._session_id
+
+    def _save_turn(self, role: str, content: str | None = None,
+                   tool_calls: list | None = None,
+                   tool_results: list | None = None,
+                   token_usage: dict | None = None) -> None:
+        if self._store is None:
+            return
+        self._chat_id += 1
+        self._store.save_turn(
+            session_id=self._session_id or "unknown",
+            chat_id=self._chat_id,
+            role=role,
+            content=content,
+            tool_calls=tool_calls,
+            tool_results=tool_results,
+            token_usage=token_usage,
+            model=self._config.model,
+        )
+
+    @property
+    def session_id(self) -> str | None:
+        return self._session_id
+
+    @property
+    def store(self) -> SessionStore | None:
+        return self._store
