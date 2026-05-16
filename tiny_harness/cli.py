@@ -11,6 +11,8 @@ def parse_args() -> Namespace:
     parser.add_argument("prompt", nargs="?", default=None, help="Prompt for one-shot mode")
     parser.add_argument("--model", "-m", default="claude-sonnet-4-20250514", help="Model identifier")
     parser.add_argument("--workspace", "-w", default=os.getcwd(), help="Workspace directory")
+    parser.add_argument("--provider", default="anthropic", help="LLM provider: anthropic, openai, deepseek")
+    parser.add_argument("--api-base-url", default=None, help="Custom API base URL")
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
     parser.add_argument("--skills", default="", help="Comma-separated skill names")
     parser.add_argument("--api-key-env", default="ANTHROPIC_API_KEY", help="Env var for API key")
@@ -91,7 +93,7 @@ def main():
 
     from tiny_harness import Agent, Prompt, Config
     prompt = Prompt("You are a helpful AI assistant. Use tools when appropriate.")
-    config = Config(model=args.model, api_key=api_key, workspace=args.workspace, max_iterations=args.max_iterations)
+    config = Config(model=args.model, api_key=api_key, workspace=args.workspace, provider=args.provider, api_base_url=args.api_base_url, max_iterations=args.max_iterations)
     agent = Agent(prompt=prompt, config=config)
 
     for skill_name in args.skills.split(","):
