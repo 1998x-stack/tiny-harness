@@ -3,7 +3,8 @@
 Example: Agent uses shell commands to explore and modify the project.
 Usage: export DEEPSEEK_API_KEY="sk-..." && python examples/06_shell_tools.py
 """
-import asyncio, os
+import asyncio
+import os
 from tiny_harness import Agent, Prompt, Config
 
 async def main():

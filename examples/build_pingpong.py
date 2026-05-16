@@ -8,7 +8,8 @@ Usage:
     python examples/build_pingpong.py
 """
 
-import asyncio, os
+import asyncio
+import os
 from tiny_harness import Agent, Prompt, Config
 
 
@@ -49,7 +50,7 @@ Include proper __main__ guard and curses.wrapper().
         print(f"\n✅ Game created: {path} ({os.path.getsize(path)} bytes)")
         print("   Run with: python examples/agent-projects/pingpong.py")
     else:
-        print(f"\n❌ Game not created. Check agent output above.")
+        print("\n❌ Game not created. Check agent output above.")
 
 
 if __name__ == "__main__":

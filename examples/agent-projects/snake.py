@@ -16,7 +16,7 @@ Author: AI Assistant
 import curses
 import random
 import time
-from typing import List, Tuple, Set
+from typing import List, Set
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -169,7 +169,7 @@ class SnakeGame:
             return False
 
         # Check self collision (except tail which will move away)
-        tail = self.snake[-1]
+        self.snake[-1]
         collidable = set(self.snake[:-1])  # exclude tail
         if new_head in collidable:
             self.game_over = True

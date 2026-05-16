@@ -209,7 +209,6 @@ class CartPoleEnv:
 
         # Pole tip position relative to cart centre
         tip_x_offset = -pole_len * math.sin(theta)
-        tip_y_offset = 0  # we'll just draw horizontally for simplicity
         tip_col = cart_col + int(round(tip_x_offset))
         tip_col = max(0, min(2 * half_width, tip_col))
 
@@ -298,7 +297,7 @@ def _demo():
 def _manual_play():
     """Let a human play using keyboard input (left/right arrows)."""
     try:
-        import readline  # for better input handling (Unix)
+        pass  # readline not available; raw input used instead
     except ImportError:
         pass
 

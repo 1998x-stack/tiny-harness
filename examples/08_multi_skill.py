@@ -3,7 +3,8 @@
 Example: Agent uses multiple skills together — files + shell + search.
 Usage: export DEEPSEEK_API_KEY="sk-..." && python examples/08_multi_skill.py
 """
-import asyncio, os
+import asyncio
+import os
 from tiny_harness import Agent, Prompt, Config
 
 async def main():

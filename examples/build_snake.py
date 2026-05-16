@@ -6,7 +6,8 @@ Usage:
     python examples/build_snake.py
 """
 
-import asyncio, os
+import asyncio
+import os
 from tiny_harness import Agent, Prompt, Config
 
 
@@ -43,7 +44,7 @@ Make it complete and runnable with `python snake.py`.
         print(f"\n✅ Created: {path} ({os.path.getsize(path)} bytes)")
         print("   Run with: python examples/agent-projects/snake.py")
     else:
-        print(f"\n❌ Not created. Check agent output.")
+        print("\n❌ Not created. Check agent output.")
 
 
 if __name__ == "__main__":

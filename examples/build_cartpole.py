@@ -6,7 +6,8 @@ Usage:
     python examples/build_cartpole.py
 """
 
-import asyncio, os
+import asyncio
+import os
 from tiny_harness import Agent, Prompt, Config
 
 
@@ -44,7 +45,7 @@ Make it complete and runnable. Include a demo main() that runs random actions an
         print(f"\n✅ Created: {path} ({os.path.getsize(path)} bytes)")
         print("   Run with: python examples/agent-projects/cartpole.py")
     else:
-        print(f"\n❌ Not created. Check agent output.")
+        print("\n❌ Not created. Check agent output.")
 
 
 if __name__ == "__main__":

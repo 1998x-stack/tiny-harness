@@ -10,7 +10,6 @@ Usage:
 
 import asyncio
 import os
-import json
 from tiny_harness import Agent, Prompt, Config, ToolDef
 
 

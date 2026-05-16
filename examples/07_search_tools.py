@@ -3,7 +3,8 @@
 Example: Agent searches codebase to answer questions.
 Usage: export DEEPSEEK_API_KEY="sk-..." && python examples/07_search_tools.py
 """
-import asyncio, os
+import asyncio
+import os
 from tiny_harness import Agent, Prompt, Config
 
 async def main():

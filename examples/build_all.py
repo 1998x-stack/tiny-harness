@@ -6,7 +6,9 @@ Usage:
     python examples/build_all.py
 """
 
-import asyncio, os, sys
+import asyncio
+import os
+import sys
 from tiny_harness import Agent, Prompt, Config
 
 
