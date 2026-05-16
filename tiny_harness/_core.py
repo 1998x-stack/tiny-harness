@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 
 from tiny_harness._config import AgentConfig, Prompt
 from tiny_harness._messages import MessageManager
-from tiny_harness._llm import AnthropicProvider
+from tiny_harness._llm import AnthropicProvider, OpenAIProvider
 from tiny_harness._tools import ToolRegistry, ToolExecutor
 from tiny_harness._guard import FilesystemGuard
 from tiny_harness._events import EventBus, StreamEvent
@@ -19,13 +19,23 @@ class Agent:
         self._config = config
         self._prompt = prompt
         self._messages = MessageManager(prompt)
-        self._llm_provider = AnthropicProvider(config.api_key, config.model)
+        self._llm_provider = self._create_provider(config)
         self._tool_registry = ToolRegistry()
         self._guard = FilesystemGuard(config.workspace)
         self._tool_executor = ToolExecutor(self._tool_registry, self._guard, config.timeout_ms, config.max_tool_result_chars)
         self._event_bus = EventBus()
         self._loaded_skills: list[str] = []
         self._running = False
+
+    def _create_provider(self, config: AgentConfig):
+        match config.provider:
+            case "anthropic":
+                return AnthropicProvider(config.api_key, config.model)
+            case "openai" | "deepseek":
+                base_url = config.api_base_url or "https://api.openai.com/v1"
+                return OpenAIProvider(config.api_key, config.model, base_url=base_url)
+            case _:
+                raise ValueError(f"Unknown provider: {config.provider}")
 
     @property
     def tools(self) -> ToolRegistry:

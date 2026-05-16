@@ -7,6 +7,8 @@ class AgentConfig:
     model: str
     api_key: str
     workspace: str
+    provider: str = "anthropic"
+    api_base_url: str | None = None
     max_iterations: int = 25
     max_errors: int = 10
     max_consecutive_errors: int = 3

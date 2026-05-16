@@ -215,3 +215,102 @@ class _UsageAdapter:
     def __init__(self, data: dict):
         self.input_tokens = data.get("input_tokens", 0)
         self.output_tokens = data.get("output_tokens", 0)
+
+
+class OpenAIProvider(LLMProvider):
+    def __init__(self, api_key: str, model: str, base_url: str = "https://api.openai.com/v1", retry_config: LLMRetryConfig | None = None):
+        self._api_key = api_key
+        self._model = model
+        self._base_url = base_url.rstrip("/")
+        self._retry_config = retry_config or LLMRetryConfig()
+
+    def _convert_messages(self, messages: list[dict]) -> list[dict]:
+        return messages
+
+    def _convert_tools(self, tools: list[dict] | None) -> list[dict] | None:
+        if not tools:
+            return None
+        return [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
+
+    def _parse_response(self, data: dict) -> LLMResponse:
+        choice = data["choices"][0]
+        msg = choice["message"]
+        tool_calls = []
+        if msg.get("tool_calls"):
+            for tc in msg["tool_calls"]:
+                tool_calls.append(ToolCallRequest(id=tc["id"], name=tc["function"]["name"], arguments=json.loads(tc["function"]["arguments"])))
+        return LLMResponse(
+            text=msg.get("content"),
+            tool_calls=tool_calls,
+            usage=TokenUsage(input_tokens=data.get("usage", {}).get("prompt_tokens", 0), output_tokens=data.get("usage", {}).get("completion_tokens", 0)),
+            finish_reason=choice.get("finish_reason", "stop"),
+        )
+
+    async def generate(self, messages, tools=None) -> LLMResponse:
+        import httpx
+        body: dict = {"model": self._model, "messages": self._convert_messages(messages), "stream": False}
+        converted_tools = self._convert_tools(tools)
+        if converted_tools:
+            body["tools"] = converted_tools
+
+        last_error = None
+        for attempt in range(self._retry_config.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    resp = await client.post(
+                        f"{self._base_url}/chat/completions",
+                        json=body,
+                        headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
+                    )
+                if resp.status_code == 200:
+                    return self._parse_response(resp.json())
+                if resp.status_code in (429, 529) or resp.status_code >= 500:
+                    raise RetryableLLMError(f"Status {resp.status_code}")
+                if resp.status_code in (401, 403):
+                    raise FatalLLMError(f"Auth failed: {resp.status_code}")
+                raise FatalLLMError(f"API error: {resp.status_code}")
+            except (RetryableLLMError, httpx.TimeoutException, httpx.ConnectError) as e:
+                last_error = e
+                if attempt == self._retry_config.max_retries:
+                    raise FatalLLMError(f"All retries exhausted: {e}")
+                delay = min(self._retry_config.base_delay * (self._retry_config.backoff_factor ** attempt), self._retry_config.max_delay)
+                await asyncio.sleep(delay + random.uniform(0, delay * 0.5))
+        raise FatalLLMError(f"All retries exhausted: {last_error}")
+
+    async def generate_stream(self, messages, tools=None):
+        import httpx
+        body: dict = {"model": self._model, "messages": self._convert_messages(messages), "stream": True}
+        converted_tools = self._convert_tools(tools)
+        if converted_tools:
+            body["tools"] = converted_tools
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream(
+                "POST", f"{self._base_url}/chat/completions",
+                json=body,
+                headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
+            ) as response:
+                if response.status_code != 200:
+                    body_bytes = await response.aread()
+                    raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
+                async for line in response.aiter_lines():
+                    line = line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = data.get("choices", [{}])[0].get("delta", {})
+                    if delta.get("content"):
+                        yield LLMStreamChunk(type="text_delta", content=delta["content"])
+                    if delta.get("tool_calls"):
+                        for tc in delta["tool_calls"]:
+                            func = tc.get("function", {})
+                            if "name" in func:
+                                yield LLMStreamChunk(type="tool_call_start", content=json.dumps({"id": tc.get("id", ""), "name": func["name"]}))
+                            if "arguments" in func:
+                                yield LLMStreamChunk(type="tool_call_delta", content=func["arguments"])
