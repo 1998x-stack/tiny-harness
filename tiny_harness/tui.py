@@ -65,11 +65,12 @@ class TuiSession:
         grid.add_column(style=Style(color=TOOL_C), justify="right", width=12)
         grid.add_column(style=Style(color=DIM_C), justify="right", width=10)
 
+        tokens_str = f"{self.tokens_used}" if self.tokens_used < 1000 else f"{self.tokens_used // 1000}K"
         grid.add_row(
             " tiny-harness",
             f" {self.model}",
             f"Iter {self.iteration}/{self.max_iterations}",
-            f"{self.tool_calls_count} calls",
+            f"{tokens_str} tokens",
             f"{elapsed:.0f}s",
         )
         return Panel(grid, style=BORDER_STYLE, padding=(0, 1))
@@ -265,9 +266,31 @@ async def run_tui_session(agent: Agent, model: str):
                 async for event in agent.run_stream(prompt):
                     if event.type == "iteration":
                         tui.update_status(event.num or 0, agent._messages.estimate_tokens())
+                        # Flush accumulated text before new iteration
+                        if agent_text.strip():
+                            tui.conversation.append(Text(""))
+                            tui.conversation.append(Panel(
+                                Markdown(agent_text.strip(), code_theme="github-dark"),
+                                border_style=Style(color=BORDER_C),
+                                title="Agent",
+                                title_align="left",
+                                padding=(0, 1),
+                            ))
+                            agent_text = ""
                     elif event.type == "text_delta" and event.content:
                         agent_text += event.content
                     elif event.type == "tool_start":
+                        # Flush any text before tool call
+                        if agent_text.strip():
+                            tui.conversation.append(Text(""))
+                            tui.conversation.append(Panel(
+                                Markdown(agent_text.strip(), code_theme="github-dark"),
+                                border_style=Style(color=BORDER_C),
+                                title="Agent",
+                                title_align="left",
+                                padding=(0, 1),
+                            ))
+                            agent_text = ""
                         tui.add_tool_call(event.tool_name or "?", event.content or "")
                     elif event.type == "tool_end" and event.content:
                         tui.add_tool_result(event.content)
@@ -277,6 +300,7 @@ async def run_tui_session(agent: Agent, model: str):
                     tui.render()
                     live.refresh()
 
+                # Final text block
                 if agent_text.strip():
                     tui.conversation.append(Text(""))
                     tui.conversation.append(Panel(
