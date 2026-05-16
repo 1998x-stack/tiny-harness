@@ -31,3 +31,12 @@ def test_parse_args_with_options():
         assert args.workspace == '/tmp/project'
         assert args.max_iterations == 10
         assert args.skills == 'files'
+        assert args.provider == 'anthropic'
+        assert args.api_base_url is None
+
+
+def test_parse_args_with_provider():
+    with patch.object(sys, 'argv', ['tiny-harness', 'hi', '--provider', 'deepseek', '--api-base-url', 'https://api.deepseek.com/v1']):
+        args = parse_args()
+        assert args.provider == 'deepseek'
+        assert args.api_base_url == 'https://api.deepseek.com/v1'

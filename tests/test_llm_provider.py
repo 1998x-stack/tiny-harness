@@ -118,3 +118,52 @@ def test_retry_config_defaults():
     assert config.max_retries == 3
     assert config.base_delay == 1.0
     assert config.max_delay == 60.0
+
+
+from tiny_harness._llm import OpenAIProvider
+
+
+def test_openai_provider_convert_messages_passthrough():
+    provider = OpenAIProvider(api_key="test-key", model="gpt-4o")
+    msgs = [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}]
+    result = provider._convert_messages(msgs)
+    assert result == msgs
+
+
+def test_openai_provider_convert_tools():
+    provider = OpenAIProvider(api_key="test-key", model="gpt-4o")
+    tools = [{"name": "read_file", "description": "Read", "input_schema": {"type": "object", "properties": {}}}]
+    result = provider._convert_tools(tools)
+    assert len(result) == 1
+    assert result[0]["type"] == "function"
+    assert result[0]["function"]["name"] == "read_file"
+
+
+def test_openai_provider_parse_response():
+    provider = OpenAIProvider(api_key="test-key", model="gpt-4o")
+    data = {
+        "choices": [{"message": {"content": "Hello!"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+    result = provider._parse_response(data)
+    assert result.text == "Hello!"
+    assert result.is_final() is True
+
+
+def test_openai_provider_parse_response_with_tool_calls():
+    provider = OpenAIProvider(api_key="test-key", model="gpt-4o")
+    data = {
+        "choices": [{"message": {"content": None, "tool_calls": [
+            {"id": "tc1", "function": {"name": "read_file", "arguments": '{"path": "/tmp/x"}'}}
+        ]}, "finish_reason": "tool_calls"}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+    result = provider._parse_response(data)
+    assert result.is_final() is False
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "read_file"
+
+
+def test_openai_provider_convert_tools_none():
+    provider = OpenAIProvider(api_key="test-key", model="gpt-4o")
+    assert provider._convert_tools(None) is None

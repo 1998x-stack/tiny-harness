@@ -24,3 +24,26 @@ def test_prompt_append_and_to_string():
     assert "## Tools" in result
     assert "## Rules" in result
     assert "\n\n" in result
+
+
+def test_prompt_multiple_skills_append():
+    prompt = Prompt("base")
+    prompt.append("skill_a")
+    prompt.append("skill_b")
+    result = prompt.to_string()
+    assert "base" in result
+    assert "skill_a" in result
+    assert "skill_b" in result
+    assert result.count("\n\n") == 2
+
+
+def test_config_provider_field():
+    config = AgentConfig(model="m", api_key="k", workspace=".", provider="deepseek", api_base_url="https://api.deepseek.com/v1")
+    assert config.provider == "deepseek"
+    assert config.api_base_url == "https://api.deepseek.com/v1"
+
+
+def test_config_provider_default():
+    config = AgentConfig(model="m", api_key="k", workspace=".")
+    assert config.provider == "anthropic"
+    assert config.api_base_url is None
