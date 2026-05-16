@@ -17,7 +17,7 @@ def test_cwd():
 
 
 def test_exit_code_nonzero():
-    result = run_command({"command": "exit 1"})
+    result = run_command({"command": "python3 -c \"import sys; sys.exit(1)\""})
     assert "[exit code: 1]" in result
 
 

@@ -70,10 +70,11 @@ class FatalLLMError(Exception):
 
 
 class AnthropicProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str, retry_config: LLMRetryConfig | None = None):
+    def __init__(self, api_key: str, model: str, retry_config: LLMRetryConfig | None = None, max_tokens: int = 16384):
         self._api_key = api_key
         self._model = model
         self._retry_config = retry_config or LLMRetryConfig()
+        self._max_tokens = max_tokens
 
     def _convert_messages(self, messages: list[dict]) -> list[dict]:
         return [m for m in messages if m["role"] != "system"]
@@ -121,7 +122,7 @@ class AnthropicProvider(LLMProvider):
         converted = self._convert_messages(messages)
         converted_tools = self._convert_tools(tools)
 
-        body: dict = {"model": self._model, "max_tokens": 16384, "messages": converted, "stream": False}
+        body: dict = {"model": self._model, "max_tokens": self._max_tokens, "messages": converted, "stream": False}
         if system:
             body["system"] = system
         if converted_tools:
@@ -158,7 +159,7 @@ class AnthropicProvider(LLMProvider):
         converted = self._convert_messages(messages)
         converted_tools = self._convert_tools(tools)
 
-        body: dict = {"model": self._model, "max_tokens": 16384, "messages": converted, "stream": True}
+        body: dict = {"model": self._model, "max_tokens": self._max_tokens, "messages": converted, "stream": True}
         if system:
             body["system"] = system
         if converted_tools:
@@ -218,11 +219,12 @@ class _UsageAdapter:
 
 
 class OpenAIProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str, base_url: str = "https://api.openai.com/v1", retry_config: LLMRetryConfig | None = None):
+    def __init__(self, api_key: str, model: str, base_url: str = "https://api.openai.com/v1", retry_config: LLMRetryConfig | None = None, max_tokens: int = 16384):
         self._api_key = api_key
         self._model = model
         self._base_url = base_url.rstrip("/")
         self._retry_config = retry_config or LLMRetryConfig()
+        self._max_tokens = max_tokens
 
     def _convert_messages(self, messages: list[dict]) -> list[dict]:
         return messages
@@ -248,7 +250,7 @@ class OpenAIProvider(LLMProvider):
 
     async def generate(self, messages, tools=None) -> LLMResponse:
         import httpx
-        body: dict = {"model": self._model, "messages": self._convert_messages(messages), "stream": False}
+        body: dict = {"model": self._model, "messages": self._convert_messages(messages), "max_tokens": self._max_tokens, "stream": False}
         converted_tools = self._convert_tools(tools)
         if converted_tools:
             body["tools"] = converted_tools
@@ -279,7 +281,7 @@ class OpenAIProvider(LLMProvider):
 
     async def generate_stream(self, messages, tools=None):
         import httpx
-        body: dict = {"model": self._model, "messages": self._convert_messages(messages), "stream": True}
+        body: dict = {"model": self._model, "messages": self._convert_messages(messages), "max_tokens": self._max_tokens, "stream": True}
         converted_tools = self._convert_tools(tools)
         if converted_tools:
             body["tools"] = converted_tools

@@ -397,6 +397,7 @@ Full `Config` reference:
 | `max_consecutive_errors` | `int` | `3` | Consecutive error budget |
 | `timeout_ms` | `int` | `30_000` | Per-tool execution timeout |
 | `max_tool_result_chars` | `int` | `50_000` | Truncate large tool outputs |
+| `max_tokens` | `int` | `16384` | Max tokens per LLM response |
 
 ### Provider-Specific Config
 
@@ -466,6 +467,21 @@ data = store.export_session("a1b2c3d4e5f6")
 store.delete_session("a1b2c3d4e5f6")
 ```
 
+### Resuming a Session
+
+Reload a saved conversation to continue where you left off:
+
+```python
+agent = Agent(prompt=Prompt("You are a coding assistant."), config=..., store=store)
+
+# Resume an existing session — conversation is restored from JSONL
+turns = agent.resume_session("a1b2c3d4e5f6")
+print(f"Restored {turns} turns")
+
+# Continue the conversation
+await agent.run("Let's continue working on that feature...")
+```
+
 ### JSONL Format
 
 Each line is a JSON object:
@@ -490,19 +506,30 @@ def weather_tool(args: dict) -> str:
     # In a real tool, you'd call a weather API here
     return f"Sunny, 22°C in {city}"
 
-# Register the tool
+# Short form (convenience)
+agent.tools.register_tool(
+    name="weather",
+    description="Get current weather for a city.",
+    parameters={
+        "type": "object",
+        "properties": {"city": {"type": "string", "description": "City name"}},
+        "required": ["city"],
+    },
+    handler=weather_tool,
+    risk_level="read_only",
+)
+
+# Long form (explicit ToolDef — same result)
 agent.tools.register_from_def(
     ToolDef(
         name="weather",
         description="Get current weather for a city.",
         parameters={
             "type": "object",
-            "properties": {
-                "city": {"type": "string", "description": "City name"}
-            },
+            "properties": {"city": {"type": "string", "description": "City name"}},
             "required": ["city"],
         },
-        risk_level="read_only",  # "safe" | "read_only" | "mutation" | "destructive" | "dangerous"
+        risk_level="read_only",  # "safe" | "read_only" | "mutation" | "destructive"
     ),
     handler=weather_tool,
 )

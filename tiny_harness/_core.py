@@ -34,10 +34,10 @@ class Agent:
     def _create_provider(self, config: AgentConfig):
         match config.provider:
             case "anthropic":
-                return AnthropicProvider(config.api_key, config.model)
+                return AnthropicProvider(config.api_key, config.model, max_tokens=config.max_tokens)
             case "openai" | "deepseek":
                 base_url = config.api_base_url or "https://api.openai.com/v1"
-                return OpenAIProvider(config.api_key, config.model, base_url=base_url)
+                return OpenAIProvider(config.api_key, config.model, base_url=base_url, max_tokens=config.max_tokens)
             case _:
                 raise ValueError(f"Unknown provider: {config.provider}")
 
@@ -129,6 +129,41 @@ class Agent:
         self._session_id = session_id or self._store.new_session()
         self._chat_id = 0
         return self._session_id
+
+    def resume_session(self, session_id: str) -> int:
+        """Reload a conversation from a saved session. Returns number of turns restored."""
+        if self._store is None:
+            raise RuntimeError("No SessionStore configured. Pass store= to Agent() or call start_session() first.")
+        records = self._store.load_session(session_id)
+        if not records:
+            raise RuntimeError(f"Session '{session_id}' not found or empty.")
+        self.clear()
+        self._session_id = session_id
+        self._chat_id = 0
+        for rec in records:
+            self._chat_id += 1
+            role = rec["role"]
+            content = rec.get("content")
+            tool_calls = rec.get("tool_calls")
+            tool_results = rec.get("tool_results")
+            if role == "user":
+                if content:
+                    self._messages.add_user(content)
+            elif role == "assistant":
+                tc_list = None
+                if tool_calls:
+                    from tiny_harness._llm import ToolCallRequest
+                    tc_list = [
+                        ToolCallRequest(id=tc.get("id", f"call_{i}"), name=tc["name"], arguments=tc.get("arguments", {}))
+                        for i, tc in enumerate(tool_calls)
+                    ]
+                self._messages.add_assistant(text=content, tool_calls=tc_list)
+                if tool_results:
+                    for tr in tool_results:
+                        tr_id = tr.get("id", "")
+                        tr_content = tr.get("content", "")
+                        self._messages.add_tool_result(tr_id, tr_content)
+        return len(records)
 
     def _save_turn(self, role: str, content: str | None = None,
                    tool_calls: list | None = None,

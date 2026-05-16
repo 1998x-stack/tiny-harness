@@ -1,9 +1,14 @@
 # tiny_harness/_tools.py
+from __future__ import annotations
 import json
 import asyncio
 from dataclasses import dataclass
 from difflib import get_close_matches
 from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tiny_harness._guard import FilesystemGuard
 
 
 @dataclass
@@ -45,6 +50,10 @@ class ToolRegistry:
     def register_from_def(self, def_: ToolDef, handler: Callable) -> None:
         self.register(Tool(definition=def_, handler=handler))
 
+    def register_tool(self, name: str, description: str, parameters: dict, handler: Callable, risk_level: str = "read_only") -> None:
+        """Convenience method: register a tool without creating a ToolDef explicitly."""
+        self.register_from_def(ToolDef(name=name, description=description, parameters=parameters, risk_level=risk_level), handler)
+
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
@@ -56,7 +65,7 @@ class ToolRegistry:
 
 
 class ToolExecutor:
-    def __init__(self, registry: ToolRegistry, guard, timeout_ms: int = 30_000, max_output_chars: int = 50_000):
+    def __init__(self, registry: ToolRegistry, guard: "FilesystemGuard", timeout_ms: int = 30_000, max_output_chars: int = 50_000):
         self._registry = registry
         self._guard = guard
         self._timeout_ms = timeout_ms

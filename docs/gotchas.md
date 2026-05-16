@@ -317,3 +317,71 @@ Unlike the CLI, the Python API does NOT auto-load skills. You must call `agent.l
 
 The base system prompt is now a simple identity statement. Skills append their own tool usage instructions. This prevents the LLM from trying to use tools that aren't loaded.
 
+---
+
+## Shell Tool Safety
+
+### Shell commands auto-detect safe execution mode
+
+The `run_command` tool now parses commands with `shlex.split()` and executes them via `shell=False` when possible. Complex commands containing shell metacharacters (`|`, `;`, `&`, `>`, `<`, `$`, `` ` ``, `(`, `)`) fall back to `shell=True`:
+
+```python
+# Executed with shell=False (safe — arg list)
+run_command({"command": "git status"})
+run_command({"command": "python3 script.py"})
+
+# Executed with shell=True (fallback — needs shell syntax)
+run_command({"command": "echo err >&2; echo out"})
+run_command({"command": "cat file.txt | wc -l"})
+```
+
+Shell builtins (`exit`, `cd`, `export`) work via shell=True fallback since they have no binary on disk.
+
+---
+
+## New Features
+
+### Convenience tool registration: `register_tool()`
+
+You can register tools without creating a `ToolDef` explicitly:
+
+```python
+# Short form — ToolDef created internally
+agent.tools.register_tool(
+    name="weather",
+    description="Get weather for a city.",
+    parameters={"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
+    handler=lambda args: f"Sunny in {args['city']}",
+)
+
+# Equivalent long form (still works)
+agent.tools.register_from_def(ToolDef(name="weather", ...), handler=...)
+```
+
+### Resume sessions: `agent.resume_session(session_id)`
+
+Reload a saved conversation from a JSONL file:
+
+```python
+store = SessionStore()
+agent = Agent(prompt=..., config=..., store=store)
+
+# Later: reload conversation
+turns = agent.resume_session("a1b2c3d4e5f6")
+# Agent now has full conversation context from the saved session
+await agent.run("Continue where we left off...")
+```
+
+### Configurable max output tokens: `Config(max_tokens=...)`
+
+Control per-response token limits:
+
+```python
+config = Config(
+    model="claude-sonnet-4-20250514",
+    api_key="...",
+    workspace=".",
+    max_tokens=4096,  # limit response size (default: 16384)
+)
+```
+

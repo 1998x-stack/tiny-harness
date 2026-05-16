@@ -14,6 +14,7 @@ class AgentConfig:
     max_consecutive_errors: int = 3
     timeout_ms: int = 30_000
     max_tool_result_chars: int = 50_000
+    max_tokens: int = 16384
 
 
 class Prompt:
