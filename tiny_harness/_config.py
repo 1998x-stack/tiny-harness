@@ -7,7 +7,7 @@ class AgentConfig:
     model: str
     api_key: str
     workspace: str
-    provider: str = "anthropic"
+    provider: str = "deepseek"
     api_base_url: str | None = None
     max_iterations: int = 25
     max_errors: int = 10

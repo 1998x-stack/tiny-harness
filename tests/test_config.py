@@ -45,5 +45,5 @@ def test_config_provider_field():
 
 def test_config_provider_default():
     config = AgentConfig(model="m", api_key="k", workspace=".")
-    assert config.provider == "anthropic"
+    assert config.provider == "deepseek"
     assert config.api_base_url is None

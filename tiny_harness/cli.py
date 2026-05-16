@@ -9,14 +9,14 @@ from argparse import ArgumentParser, Namespace
 def parse_args() -> Namespace:
     parser = ArgumentParser(prog="tiny-harness", description="AI agent harness with tools and streaming CLI")
     parser.add_argument("prompt", nargs="?", default=None, help="Prompt for one-shot mode")
-    parser.add_argument("--model", "-m", default="claude-sonnet-4-20250514", help="Model identifier")
+    parser.add_argument("--model", "-m", default="deepseek-v4-flash", help="Model identifier")
     parser.add_argument("--workspace", "-w", default=os.getcwd(), help="Workspace directory")
-    parser.add_argument("--provider", default="anthropic", help="LLM provider: anthropic, openai, deepseek")
-    parser.add_argument("--api-base-url", default=None, help="Custom API base URL")
+    parser.add_argument("--provider", default="deepseek", help="LLM provider: anthropic, openai, deepseek")
+    parser.add_argument("--api-base-url", default="https://api.deepseek.com/v1", help="Custom API base URL")
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
     parser.add_argument("--skills", default="", help="Comma-separated skill names")
     parser.add_argument("--tui", action="store_true", help="Use rich TUI mode (requires 'rich' package)")
-    parser.add_argument("--api-key-env", default="ANTHROPIC_API_KEY", help="Env var for API key")
+    parser.add_argument("--api-key-env", default="DEEPSEEK_API_KEY", help="Env var for API key")
     return parser.parse_args()
 
 

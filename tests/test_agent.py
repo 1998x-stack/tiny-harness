@@ -54,7 +54,7 @@ def test_agent_config_fields():
 
 def test_agent_config_defaults():
     config = Config(model="m", api_key="k", workspace=".")
-    assert config.provider == "anthropic"
+    assert config.provider == "deepseek"
     assert config.api_base_url is None
     assert config.max_iterations == 25
     assert config.max_errors == 10

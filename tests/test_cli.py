@@ -31,8 +31,8 @@ def test_parse_args_with_options():
         assert args.workspace == '/tmp/project'
         assert args.max_iterations == 10
         assert args.skills == 'files'
-        assert args.provider == 'anthropic'
-        assert args.api_base_url is None
+        assert args.provider == 'deepseek'
+        assert args.api_base_url == 'https://api.deepseek.com/v1'
 
 
 def test_parse_args_with_provider():
