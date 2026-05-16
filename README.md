@@ -3,7 +3,7 @@
 **Minimal AI agent harness — wrap any LLM with tools and a streaming CLI.**
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-147%20passed-brightgreen)](https://github.com/1998x-stack/tiny-harness/actions)
+[![Tests](https://img.shields.io/badge/tests-195%20passed-brightgreen)](https://github.com/1998x-stack/tiny-harness/actions)
 [![Lines](https://img.shields.io/badge/code-1%2C350%20lines-lightgrey)](.)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -18,16 +18,22 @@ from tiny_harness import Agent, Prompt, Config
 import os
 
 agent = Agent(
-    prompt=Prompt("You are a helpful coding assistant. Use tools when needed."),
+    prompt=Prompt("You are a helpful coding assistant."),
     config=Config(
-        model="claude-sonnet-4-20250514",
-        api_key=os.environ["ANTHROPIC_API_KEY"],
+        model="deepseek-chat",
+        api_key=os.environ["DEEPSEEK_API_KEY"],
         workspace=".",
     )
 )
 
-agent.load_skill("files")                    # gives the agent file system access
+# files skill loaded by default in CLI; explicit in Python API
+agent.load_skill("files")
 result = await agent.run("Create hello.py")  # agent writes the file
+```
+
+```bash
+# CLI loads files skill automatically
+tiny-harness "Create hello.py"
 ```
 
 ## Features
@@ -37,8 +43,9 @@ result = await agent.run("Create hello.py")  # agent writes the file
 - **Streaming** — real-time SSE streaming from Anthropic and OpenAI-compatible APIs
 - **Multi-provider** — Anthropic (native) and OpenAI/DeepSeek (compatible) providers
 - **Skills** — packaged bundles of tools + prompt instructions, loaded with `agent.load_skill("files")`
-- **CLI** — session REPL with streaming output, one-shot mode for scripts
-- **Rich TUI** — optional `--tui` mode with panels, colors, real-time status bar (`pip install tiny-harness[tui]`)
+- **CLI** — session REPL with streaming output, one-shot mode for scripts. Files skill loaded by default.
+- **Rich TUI** — optional `--tui` mode with panels, markdown rendering, color-coded messages (`pip install tiny-harness[tui]`)
+- **Persistence** — JSONL session history with `/save` and `/history` commands
 - **Filesystem guard** — workspace boundary enforcement, path traversal protection
 - **1,125 lines** — readable top-to-bottom, CleanRL-inspired code style
 

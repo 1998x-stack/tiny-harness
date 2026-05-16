@@ -83,6 +83,12 @@ _config.py → _events.py → _guard.py → _llm.py → _messages.py → _tools.
 
 8. **Skills are resolved as:** `tiny_harness.skills.{name}` → direct import → file path. Loading same skill twice is a no-op.
 
+9. **CLI loads `files` skill by default.** Running `tiny-harness` without `--skills` loads files automatically. Use `--skills ""` for no tools.
+
+10. **Python API does NOT auto-load skills.** `Agent(...)` has zero tools. Must call `agent.load_skill("files")` explicitly.
+
+11. **TUI uses `asyncio.to_thread(input)` — blocking but cross-platform.** Raw tty input was removed because it was Unix-only and fragile.
+
 ---
 
 ## Code conventions

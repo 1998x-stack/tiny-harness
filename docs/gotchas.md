@@ -276,3 +276,44 @@ for name in agent.tools.names():
 tokens = agent._messages.estimate_tokens()
 print(f"~{tokens} tokens used (approximate)")
 ```
+
+---
+
+## TUI Mode
+
+### TUI requires `rich` package
+
+```bash
+pip install tiny-harness[tui]
+```
+
+Without it, `--tui` shows an error and exits.
+
+### TUI uses `asyncio.to_thread(input)` — blocking but reliable
+
+The TUI's input uses `asyncio.to_thread(sys.stdin.readline)`. This blocks the thread but keeps the async event loop responsive for Live refresh. Raw tty input was removed because it was Unix-only and fragile.
+
+### Text blocks flush before tool calls
+
+Each assistant text response is rendered as its own Markdown panel. When the agent makes a tool call, accumulated text is flushed as a panel before the tool call is displayed. This keeps the conversation visually clean and allows code blocks to render correctly.
+
+### Token display shows raw count when <1000
+
+`[Iter 1/25 | Tokens: 0K]` is misleading — the actual count might be 250 tokens. The display now shows `250 tokens` for counts under 1000, and `2K tokens` for 2000+.
+
+---
+
+## Default Behavior
+
+### CLI loads `files` skill by default
+
+Running `tiny-harness` without `--skills` now loads the `files` skill automatically. The agent has file read/write/list access by default. Use `--skills files,shell,search` for additional tools, or `--skills ""` for no tools.
+
+### Python API requires explicit `load_skill()`
+
+Unlike the CLI, the Python API does NOT auto-load skills. You must call `agent.load_skill("files")` explicitly.
+
+### System prompt no longer says "use tools"
+
+The base system prompt is now a simple identity statement. Skills append their own tool usage instructions. This prevents the LLM from trying to use tools that aren't loaded.
+
