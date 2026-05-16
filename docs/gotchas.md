@@ -339,6 +339,43 @@ Shell builtins (`exit`, `cd`, `export`) work via shell=True fallback since they 
 
 ---
 
+## Persistence
+
+### `/save` now dumps the full conversation to disk
+
+The `/save` command calls `_dump_conversation()` which serializes all current messages (user prompts, assistant responses, tool calls, tool results) to a JSONL file. Previously, `/save` only initialized the session without writing existing messages — the file would be created empty.
+
+### `start_session()` is idempotent
+
+```python
+sid1 = agent.start_session()  # creates session, returns ID
+sid2 = agent.start_session()  # returns same ID — no new session
+assert sid1 == sid2
+```
+
+Calling `start_session()` multiple times returns the same session ID and does NOT reset `_chat_id`.
+
+### `_save_turn()` is a no-op until `start_session()` is called
+
+Both `agent.run()` and `agent.run_stream()` call `_save_turn()` internally, but it returns early if `_session_id` is None. The CLI/TUI `/save` commands call `start_session()` first. In the Python API, call it explicitly:
+
+```python
+agent.start_session()
+await agent.run("hello")     # turn saved
+await agent.run("world")     # turn saved
+agent._dump_conversation()   # write all to file
+```
+
+### Tool call format differs between memory and storage
+
+Messages store tool calls as `{"function": {"name": ..., "arguments": "..."}}` (LLM format). The SessionStore expects `{"name": ..., "arguments": {...}}` (plain dicts). `_dump_conversation()` handles this conversion internally.
+
+### The loop now adds assistant messages even without tool calls
+
+Previously, when the LLM returned text without calling tools, the assistant response was returned as a string but never added to `_messages`. It's now added via `add_assistant()`, so `_dump_conversation()` sees the complete conversation.
+
+---
+
 ## New Features
 
 ### Convenience tool registration: `register_tool()`

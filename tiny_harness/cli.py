@@ -29,7 +29,10 @@ def _get_api_key(args: Namespace) -> str:
 
 async def _run_one_shot(args: Namespace, agent):
     async for event in agent.run_stream(args.prompt):
-        if event.type == "text_delta" and event.content:
+        if event.type == "iteration":
+            tokens = event.content or "?"
+            print(f"\n[Iter {event.num}/{event.max} | Tokens: {tokens}]")
+        elif event.type == "text_delta" and event.content:
             print(event.content, end="", flush=True)
         elif event.type == "tool_start":
             print(f"\n  ⚡ {event.tool_name}", end="", flush=True)
@@ -69,9 +72,9 @@ async def _run_session(args: Namespace, agent):
             continue
         if user_input == "/save":
             agent.start_session()
+            turns = agent._dump_conversation()
             sid = agent.session_id
-            msgs = agent._messages.to_list()
-            print(f"Session saved: {sid} ({len(msgs)} messages) -> ~/.tiny-harness/sessions/{sid}.jsonl")
+            print(f"Session saved: {sid} ({turns} turns) -> ~/.tiny-harness/sessions/{sid}.jsonl")
             continue
         if user_input == "/history":
             if agent.store:

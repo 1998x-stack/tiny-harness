@@ -100,23 +100,29 @@ class Agent:
         if self._running:
             raise RuntimeError("Agent is already running a task")
         self._running = True
+        self._save_turn("user", content=prompt)
         queue: list[StreamEvent] = []
 
         async def collector(event: StreamEvent):
             queue.append(event)
 
         self._event_bus.subscribe(collector)
+        result_text = ""
         try:
             loop = AgentLoop(self._config, self._messages, self._llm_provider, self._tool_executor, self._event_bus)
             task = asyncio.create_task(loop.run(prompt))
             last_yielded = 0
             while not task.done() or last_yielded < len(queue):
                 while last_yielded < len(queue):
-                    yield queue[last_yielded]
+                    event = queue[last_yielded]
+                    if event.type == "text_delta" and event.content:
+                        result_text += event.content
+                    yield event
                     last_yielded += 1
                 if not task.done():
                     await asyncio.sleep(0.01)
             await task
+            self._save_turn("assistant", content=result_text if result_text else None)
         finally:
             self._running = False
 
@@ -124,10 +130,11 @@ class Agent:
         self._messages.clear()
 
     def start_session(self, session_id: str | None = None) -> str:
+        if self._session_id is not None:
+            return self._session_id
         if self._store is None:
             self._store = SessionStore()
         self._session_id = session_id or self._store.new_session()
-        self._chat_id = 0
         return self._session_id
 
     def resume_session(self, session_id: str) -> int:
@@ -169,11 +176,11 @@ class Agent:
                    tool_calls: list | None = None,
                    tool_results: list | None = None,
                    token_usage: dict | None = None) -> None:
-        if self._store is None:
+        if self._store is None or self._session_id is None:
             return
         self._chat_id += 1
         self._store.save_turn(
-            session_id=self._session_id or "unknown",
+            session_id=self._session_id,
             chat_id=self._chat_id,
             role=role,
             content=content,
@@ -183,6 +190,71 @@ class Agent:
             model=self._config.model,
         )
 
+    def _dump_conversation(self) -> int:
+        if self._store is None or self._session_id is None:
+            return 0
+        messages = self._messages.to_list()
+        count = 0
+        i = 1
+
+        while i < len(messages):
+            msg = messages[i]
+            role = msg.get("role", "")
+
+            if role == "user":
+                count += 1
+                self._store.save_turn(
+                    session_id=self._session_id,
+                    chat_id=count,
+                    role="user",
+                    content=msg.get("content", ""),
+                    model=self._config.model,
+                )
+                i += 1
+
+            elif role == "assistant":
+                raw_tool_calls = msg.get("tool_calls")
+                tool_calls = None
+                if raw_tool_calls:
+                    tool_calls = [
+                        {"name": tc.get("function", {}).get("name", "?"), "arguments": tc.get("function", {}).get("arguments", {})}
+                        for tc in raw_tool_calls
+                    ]
+                tool_results = []
+                j = i + 1
+                while j < len(messages) and messages[j].get("role") == "tool":
+                    tr = messages[j]
+                    tool_results.append({
+                        "id": tr.get("tool_call_id", ""),
+                        "content": tr.get("content", ""),
+                    })
+                    j += 1
+
+                count += 1
+                self._store.save_turn(
+                    session_id=self._session_id,
+                    chat_id=count,
+                    role="assistant",
+                    content=msg.get("content"),
+                    tool_calls=tool_calls,
+                    tool_results=tool_results if tool_results else None,
+                    model=self._config.model,
+                )
+                i = j
+
+            elif role == "tool":
+                i += 1
+
+            else:
+                i += 1
+
+        self._chat_id = count
+        return count
+
+    @property
+    def max_iterations(self) -> int:
+        return self._config.max_iterations
+
     @property
     def session_id(self) -> str | None:
         return self._session_id
@@ -190,3 +262,6 @@ class Agent:
     @property
     def store(self) -> SessionStore | None:
         return self._store
+
+    def estimate_tokens(self) -> int:
+        return self._messages.estimate_tokens()

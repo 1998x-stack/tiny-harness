@@ -1,20 +1,13 @@
 # tiny_harness/tui.py
 """Rich TUI mode — full-featured terminal UI with markdown rendering, scrollable conversation."""
+from __future__ import annotations
+
 import asyncio
 import time
 
-from rich.console import RenderableType
-from rich.live import Live
-from rich.layout import Layout
-from rich.panel import Panel
-from rich.text import Text
-from rich.table import Table
-from rich.markdown import Markdown
-from rich.style import Style
-
 from tiny_harness._core import Agent
 
-# ── Theme ────────────────────────────────────────────────────────────────────
+# ── Theme color constants (plain strings, no rich dependency) ────────────────
 HEADER_BG = "#0d1117"
 BORDER_C = "#30363d"
 USER_C = "#58a6ff"
@@ -25,23 +18,14 @@ SUCCESS_C = "#3fb950"
 DIM_C = "#8b949e"
 BG = "#0d1117"
 
-HEADER_STYLE = Style(color="#f0f6fc", bgcolor=HEADER_BG, bold=True)
-BORDER_STYLE = Style(color=BORDER_C)
-USER_STYLE = Style(color=USER_C, bold=True)
-AGENT_STYLE = Style(color=AGENT_C)
-TOOL_STYLE = Style(color=TOOL_C)
-ERROR_STYLE = Style(color=ERROR_C)
-SUCCESS_STYLE = Style(color=SUCCESS_C)
-DIM_STYLE = Style(color=DIM_C, italic=True)
-
 
 class TuiSession:
     def __init__(self, agent: Agent, model: str):
         self.agent = agent
         self.model = model
-        self.conversation: list[RenderableType] = []
+        self.conversation: list = []
         self.iteration = 0
-        self.max_iterations = agent._config.max_iterations
+        self.max_iterations = agent.max_iterations
         self.tokens_used = 0
         self.tool_calls_count = 0
         self.errors_count = 0
@@ -49,6 +33,7 @@ class TuiSession:
         self._build_layout()
 
     def _build_layout(self):
+        Layout = _import_rich("rich.layout", "Layout")
         self.layout = Layout()
         self.layout.split(
             Layout(name="header", size=3),
@@ -56,7 +41,8 @@ class TuiSession:
             Layout(name="input", size=3),
         )
 
-    def _header(self) -> Panel:
+    def _header(self):
+        Style, Table, Panel = _import_rich_multi("Style", "Table", "Panel")
         elapsed = time.time() - self.start_time
         grid = Table.grid(padding=(0, 2))
         grid.add_column(style=Style(color=USER_C, bold=True), width=16)
@@ -73,10 +59,11 @@ class TuiSession:
             f"{tokens_str} tokens",
             f"{elapsed:.0f}s",
         )
-        return Panel(grid, style=BORDER_STYLE, padding=(0, 1))
+        border_style = Style(color=BORDER_C)
+        return Panel(grid, style=border_style, padding=(0, 1))
 
-    def _conversation(self, user_input: str = "") -> Panel:
-        parts: list[RenderableType] = []
+    def _conversation(self, user_input: str = ""):
+        Style, Panel, Markdown, Text = _import_rich_multi("Style", "Panel", "Markdown", "Text")
 
         if not self.conversation and not user_input:
             welcome = Markdown(
@@ -84,14 +71,15 @@ class TuiSession:
                 "Type your prompt below and press **Enter**.\n\n"
                 "Commands: `/help` `/tools` `/clear` `/save` `/exit`"
             )
-            return Panel(welcome, border_style=BORDER_STYLE, padding=(1, 2))
+            border_style = Style(color=BORDER_C)
+            return Panel(welcome, border_style=border_style, padding=(1, 2))
 
-        parts.extend(self.conversation[-50:])
+        parts: list = list(self.conversation[-50:])
 
         if user_input:
             parts.append(Text(""))
             parts.append(Panel(
-                Text(f"> {user_input}", style=USER_STYLE),
+                Text(f"> {user_input}", style=Style(color=USER_C, bold=True)),
                 border_style=Style(color=USER_C),
                 padding=(0, 1),
             ))
@@ -99,13 +87,14 @@ class TuiSession:
         from rich.console import Group
         return Panel(
             Group(*parts),
-            border_style=BORDER_STYLE,
+            border_style=Style(color=BORDER_C),
             padding=(1, 1),
         )
 
-    def _input_line(self) -> Panel:
+    def _input_line(self):
+        Style, Panel, Text = _import_rich_multi("Style", "Panel", "Text")
         return Panel(
-            Text("> ", style=DIM_STYLE),
+            Text("> ", style=Style(color=DIM_C, italic=True)),
             border_style=Style(color=SUCCESS_C),
             padding=(0, 1),
             title="Prompt",
@@ -120,6 +109,7 @@ class TuiSession:
     # ── Message builders ───────────────────────────────────────────────────
 
     def add_user(self, content: str) -> None:
+        Style, Panel, Markdown, Text = _import_rich_multi("Style", "Panel", "Markdown", "Text")
         self.conversation.append(Text(""))
         self.conversation.append(Panel(
             Markdown(content),
@@ -130,6 +120,7 @@ class TuiSession:
         ))
 
     def add_assistant_text(self, text: str) -> None:
+        Style, Panel, Markdown, Text = _import_rich_multi("Style", "Panel", "Markdown", "Text")
         self.conversation.append(Text(""))
         self.conversation.append(Panel(
             Markdown(text, code_theme="github-dark"),
@@ -140,30 +131,33 @@ class TuiSession:
         ))
 
     def add_tool_call(self, tool_name: str, args_str: str, duration_ms: int | None = None) -> None:
+        Style, Text = _import_rich_multi("Style", "Text")
         content = Text()
-        content.append("⚡ ", style=TOOL_STYLE)
+        content.append("⚡ ", style=Style(color=TOOL_C))
         content.append(tool_name, style=Style(color=TOOL_C, bold=True))
 
         try:
             import json
             args = json.loads(args_str)
             short = " ".join(f"{k}={str(v)[:40]}" for k, v in list(args.items())[:3])
-            content.append(f"  {short}", style=DIM_STYLE)
+            content.append(f"  {short}", style=Style(color=DIM_C, italic=True))
         except Exception:
             pass
 
         if duration_ms is not None:
-            content.append(f"  ({duration_ms}ms)", style=DIM_STYLE)
+            content.append(f"  ({duration_ms}ms)", style=Style(color=DIM_C, italic=True))
 
         self.conversation.append(content)
         self.tool_calls_count += 1
 
     def add_tool_result(self, result: str) -> None:
-        self.conversation.append(Text(f"     {result[:120]}", style=SUCCESS_STYLE))
+        Style, Text = _import_rich_multi("Style", "Text")
+        self.conversation.append(Text(f"     {result[:120]}", style=Style(color=SUCCESS_C)))
 
     def add_error(self, message: str) -> None:
+        Style, Panel, Text = _import_rich_multi("Style", "Panel", "Text")
         self.conversation.append(Panel(
-            Text(message, style=ERROR_STYLE),
+            Text(message, style=Style(color=ERROR_C)),
             border_style=Style(color=ERROR_C),
             padding=(0, 1),
         ))
@@ -179,6 +173,8 @@ async def run_tui_session(agent: Agent, model: str):
         print("Error: 'rich' library required. Install with: pip install rich")
         return
 
+    Live, Style, Panel, Markdown, Text = _import_rich_multi("Live", "Style", "Panel", "Markdown", "Text")
+
     tui = TuiSession(agent, model)
     screen = True
 
@@ -190,7 +186,9 @@ async def run_tui_session(agent: Agent, model: str):
             try:
                 user_input = await asyncio.to_thread(input, "> ")
             except (KeyboardInterrupt, EOFError):
-                tui.conversation.append(Text("\nSession ended.", style=DIM_STYLE))
+                tui.conversation.append(
+                    Text("\nSession ended.", style=Style(color=DIM_C, italic=True))
+                )
                 tui.render()
                 live.refresh()
                 await asyncio.sleep(1)
@@ -201,7 +199,9 @@ async def run_tui_session(agent: Agent, model: str):
                 continue
 
             if prompt == "/exit" or prompt == "/quit":
-                tui.conversation.append(Text("\nSession ended.", style=DIM_STYLE))
+                tui.conversation.append(
+                    Text("\nSession ended.", style=Style(color=DIM_C, italic=True))
+                )
                 tui.render()
                 live.refresh()
                 await asyncio.sleep(1)
@@ -219,7 +219,7 @@ async def run_tui_session(agent: Agent, model: str):
                 names = agent.tools.names()
                 tui.conversation.append(Panel(
                     Text(f"**{len(names)} tools:** {', '.join(names)}"),
-                    border_style=BORDER_STYLE,
+                    border_style=Style(color=BORDER_C),
                 ))
                 tui.render()
                 live.refresh()
@@ -228,7 +228,9 @@ async def run_tui_session(agent: Agent, model: str):
             if prompt == "/clear":
                 agent.clear()
                 tui.conversation.clear()
-                tui.conversation.append(Text("Conversation cleared.", style=DIM_STYLE))
+                tui.conversation.append(
+                    Text("Conversation cleared.", style=Style(color=DIM_C, italic=True))
+                )
                 tui.iteration = 0
                 tui.tokens_used = 0
                 tui.tool_calls_count = 0
@@ -240,16 +242,19 @@ async def run_tui_session(agent: Agent, model: str):
 
             if prompt == "/save":
                 agent.start_session()
+                turns = agent._dump_conversation()
                 sid = agent.session_id
                 tui.conversation.append(Panel(
-                    Text(f"Session saved: {sid} → ~/.tiny-harness/sessions/{sid}.jsonl", style=SUCCESS_STYLE),
+                    Text(
+                        f"Session saved: {sid} ({turns} turns) → ~/.tiny-harness/sessions/{sid}.jsonl",
+                        style=Style(color=SUCCESS_C),
+                    ),
                     border_style=Style(color=SUCCESS_C),
                 ))
                 tui.render()
                 live.refresh()
                 continue
 
-            # Show user message
             tui.conversation.append(Text(""))
             tui.conversation.append(Panel(
                 Markdown(prompt),
@@ -259,13 +264,12 @@ async def run_tui_session(agent: Agent, model: str):
                 padding=(0, 1),
             ))
 
-            # Collect agent response
             agent_text = ""
 
             try:
                 async for event in agent.run_stream(prompt):
                     if event.type == "iteration":
-                        tui.update_status(event.num or 0, agent._messages.estimate_tokens())
+                        tui.update_status(event.num or 0, agent.estimate_tokens())
                         # Flush accumulated text before new iteration
                         if agent_text.strip():
                             tui.conversation.append(Text(""))
@@ -319,9 +323,43 @@ async def run_tui_session(agent: Agent, model: str):
             live.refresh()
 
 
+# ── Rich import helpers ──────────────────────────────────────────────────────
+
 def _rich_available() -> bool:
     try:
         import rich  # noqa: F401
         return True
     except ImportError:
         return False
+
+
+def _import_rich(module: str, attr: str):
+    import importlib
+    return getattr(importlib.import_module(module), attr)
+
+
+def _import_rich_multi(*attrs: str):
+    import importlib
+
+    attr_to_module = {
+        "Live": "rich.live",
+        "Layout": "rich.layout",
+        "Panel": "rich.panel",
+        "Text": "rich.text",
+        "Table": "rich.table",
+        "Markdown": "rich.markdown",
+        "Style": "rich.style",
+        "Group": "rich.console",
+    }
+
+    modules = {}
+    results = []
+    for attr in attrs:
+        mod_name = attr_to_module.get(attr)
+        if mod_name is None:
+            raise ImportError(f"Unknown rich attribute: {attr}")
+        if mod_name not in modules:
+            modules[mod_name] = importlib.import_module(mod_name)
+        results.append(getattr(modules[mod_name], attr))
+
+    return tuple(results) if len(results) > 1 else results[0]

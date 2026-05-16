@@ -63,6 +63,8 @@ print('Hello, world!')
 
 The Agent is created once at startup. The Conversation persists across all prompts within the session. Each `run(prompt)` appends the new user message to the existing Conversation.
 
+Use `/save` to persist the current conversation to `~/.tiny-harness/sessions/{id}.jsonl`. Use `/history` to list saved sessions. Saved sessions can be reloaded via the Python API (`agent.resume_session(id)`).
+
 ## 3. Streaming Output Format
 
 ### 3.1 Event Types
@@ -193,12 +195,8 @@ Inside a session, the user can type these commands:
 | `/help` | Show available commands |
 | `/tools` | List registered tools |
 | `/clear` | Reset the Conversation (keep tools, Prompt, Config) |
-| `/compact` | Manually trigger context compaction |
-| `/stats` | Show session statistics (iterations, tokens, tool calls) |
-| `/config` | Show current configuration |
-| `/model MODEL` | Switch model mid-session |
-| `/skill NAME` | Load a skill mid-session |
-| `/save FILE` | Save the Conversation to a file |
+| `/save` | Save current conversation to ~/.tiny-harness/sessions/{id}.jsonl |
+| `/history` | List previously saved sessions |
 | `!command` | Escape to shell (run command outside Agent) |
 
 ## 7. Implementation

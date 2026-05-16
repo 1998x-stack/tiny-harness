@@ -75,7 +75,9 @@ class AgentLoop:
                 return f"Agent stopped due to LLM error: {e}"
 
             if not tool_calls:
-                return "".join(collected_text)
+                final_text = "".join(collected_text)
+                self._messages.add_assistant(text=final_text if final_text else None, tool_calls=None)
+                return final_text
 
             self._messages.add_assistant(text="".join(collected_text) if collected_text else None, tool_calls=tool_calls)
             collected_text = []

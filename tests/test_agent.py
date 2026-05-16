@@ -155,3 +155,154 @@ def test_agent_clear_resets_conversation():
     assert len(agent._messages.to_list()) == 3
     agent.clear()
     assert len(agent._messages.to_list()) == 1  # only system remains
+
+
+def test_agent_max_iterations_property():
+    config = Config(model="test", api_key="k", workspace="/tmp", max_iterations=42)
+    agent = Agent(prompt=Prompt("test"), config=config)
+    assert agent.max_iterations == 42
+
+
+def test_agent_estimate_tokens():
+    agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"))
+    agent._messages.add_user("Hello world")
+    tokens = agent.estimate_tokens()
+    assert tokens > 0
+    assert isinstance(tokens, int)
+
+
+def test_agent_start_session_idempotent():
+    agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"))
+    sid1 = agent.start_session()
+    assert sid1 is not None
+    sid2 = agent.start_session()
+    assert sid2 == sid1
+
+
+def test_agent_save_turn_without_session_is_noop():
+    agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"))
+    agent._save_turn("user", content="hello")
+
+
+def test_agent_dump_conversation_writes_user_messages():
+    agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"))
+    agent._messages.add_user("Hello")
+    agent._messages.add_user("World")
+    agent.start_session()
+    turns = agent._dump_conversation()
+    assert turns == 2
+    records = agent.store.load_session(agent.session_id)
+    assert len(records) == 2
+    assert records[0]["role"] == "user"
+    assert records[0]["content"] == "Hello"
+    assert records[1]["content"] == "World"
+
+
+def test_agent_dump_conversation_with_tool_calls():
+    from tiny_harness._llm import ToolCallRequest
+    agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"))
+    agent._messages.add_user("read file")
+    tc = ToolCallRequest(id="call_1", name="read_file", arguments={"path": "test.py"})
+    agent._messages.add_assistant(text="Let me read that", tool_calls=[tc])
+    agent._messages.add_tool_result("call_1", "print('hello')")
+    agent._messages.add_assistant(text=None, tool_calls=None)
+    agent._messages.add_user("thanks")
+    agent.start_session()
+    turns = agent._dump_conversation()
+    assert turns == 4
+    records = agent.store.load_session(agent.session_id)
+    assert records[0]["role"] == "user"
+    assert records[1]["role"] == "assistant"
+    assert records[1]["tool_calls"][0]["name"] == "read_file"
+    assert len(records[1]["tool_results"]) == 1
+    assert records[1]["tool_results"][0]["content"] == "print('hello')"
+    assert records[3]["role"] == "user"
+    assert records[3]["content"] == "thanks"
+
+
+@pytest.mark.asyncio
+async def test_agent_run_persists_via_dump():
+    import tempfile
+
+    class FakeLLM:
+        async def generate_stream(self, messages, tools=None):
+            from tiny_harness._llm import LLMStreamChunk
+            yield LLMStreamChunk(type="text_delta", content="Hello from agent")
+
+    with tempfile.TemporaryDirectory() as d:
+        from tiny_harness._persist import SessionStore
+        store = SessionStore(base_dir=d)
+        agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"), store=store)
+        agent._llm_provider = FakeLLM()
+
+        result = await agent.run("Hi there")
+        assert "Hello from agent" in result
+
+        agent.start_session()
+        turns = agent._dump_conversation()
+        assert turns == 2
+
+        records = store.load_session(agent.session_id)
+        assert records[0]["role"] == "user"
+        assert records[0]["content"] == "Hi there"
+        assert records[1]["role"] == "assistant"
+        assert "Hello from agent" in records[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_agent_run_stream_persists_via_dump():
+    import tempfile
+
+    class FakeLLM:
+        async def generate_stream(self, messages, tools=None):
+            from tiny_harness._llm import LLMStreamChunk
+            yield LLMStreamChunk(type="text_delta", content="Streaming response")
+
+    with tempfile.TemporaryDirectory() as d:
+        from tiny_harness._persist import SessionStore
+        store = SessionStore(base_dir=d)
+        agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"), store=store)
+        agent._llm_provider = FakeLLM()
+
+        async for _ in agent.run_stream("stream prompt"):
+            pass
+
+        agent.start_session()
+        turns = agent._dump_conversation()
+        assert turns == 2
+
+        records = store.load_session(agent.session_id)
+        assert records[0]["role"] == "user"
+        assert records[0]["content"] == "stream prompt"
+        assert records[1]["role"] == "assistant"
+        assert "Streaming response" in records[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_agent_save_and_resume_full_cycle():
+    import tempfile
+
+    class FakeLLM:
+        async def generate_stream(self, messages, tools=None):
+            from tiny_harness._llm import LLMStreamChunk
+            yield LLMStreamChunk(type="text_delta", content="Answer")
+
+    with tempfile.TemporaryDirectory() as d:
+        from tiny_harness._persist import SessionStore
+        store = SessionStore(base_dir=d)
+        agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"), store=store)
+        agent._llm_provider = FakeLLM()
+
+        await agent.run("First question")
+        agent.start_session()
+        sid = agent.session_id
+        agent._dump_conversation()
+
+        agent2 = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"), store=store)
+        restored = agent2.resume_session(sid)
+        assert restored > 0
+        msgs = agent2._messages.to_list()
+        roles = [m["role"] for m in msgs]
+        assert "user" in roles
+        user_msgs = [m for m in msgs if m["role"] == "user"]
+        assert any("First question" in m.get("content", "") for m in user_msgs)

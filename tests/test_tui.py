@@ -83,3 +83,18 @@ def test_tui_has_correct_layout():
     assert tui.layout.get("header") is not None
     assert tui.layout.get("body") is not None
     assert tui.layout.get("input") is not None
+
+
+def test_tui_uses_agent_max_iterations():
+    config = Config(model="t", api_key="k", workspace="/tmp", max_iterations=42)
+    agent = Agent(prompt=Prompt("test"), config=config)
+    tui = TuiSession(agent, "test")
+    assert tui.max_iterations == 42
+
+
+def test_tui_render_after_clear():
+    agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"))
+    tui = TuiSession(agent, "test")
+    tui.add_user("hello")
+    tui.conversation.clear()
+    tui.render("after clear")
