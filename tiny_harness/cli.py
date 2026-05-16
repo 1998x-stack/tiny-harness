@@ -13,7 +13,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--provider", default="deepseek", help="LLM provider: anthropic, openai, deepseek")
     parser.add_argument("--api-base-url", default="https://api.deepseek.com/v1", help="Custom API base URL")
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
-    parser.add_argument("--skills", default="", help="Comma-separated skill names")
+    parser.add_argument("--skills", default="", help="Comma-separated skill names (default: files)")
     parser.add_argument("--tui", action="store_true", help="Use rich TUI mode (requires 'rich' package)")
     parser.add_argument("--api-key-env", default="DEEPSEEK_API_KEY", help="Env var for API key")
     return parser.parse_args()
@@ -110,14 +110,16 @@ def main():
     api_key = _get_api_key(args)
 
     from tiny_harness import Agent, Prompt, Config
-    prompt = Prompt("You are a helpful AI assistant. Use tools when appropriate.")
+    prompt = Prompt("You are a helpful AI assistant.")
     config = Config(model=args.model, api_key=api_key, workspace=args.workspace, provider=args.provider, api_base_url=args.api_base_url, max_iterations=args.max_iterations)
     agent = Agent(prompt=prompt, config=config)
 
-    for skill_name in args.skills.split(","):
-        skill_name = skill_name.strip()
-        if skill_name:
-            agent.load_skill(skill_name)
+    # Load skills from --skills flag, or default to files if none specified
+    skill_names = [s.strip() for s in args.skills.split(",") if s.strip()]
+    if not skill_names:
+        skill_names = ["files"]
+    for skill_name in skill_names:
+        agent.load_skill(skill_name)
 
     if args.tui:
         from tiny_harness.tui import run_tui_session

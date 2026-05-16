@@ -59,7 +59,8 @@ class AgentLoop:
 
         for iteration in range(1, self._config.max_iterations + 1):
             token_estimate = self._messages.estimate_tokens()
-            await self._events.emit(StreamEvent(type="iteration", num=iteration, max=self._config.max_iterations, content=f"{token_estimate // 1000}K"))
+            token_str = f"{token_estimate}" if token_estimate < 1000 else f"{token_estimate // 1000}K"
+            await self._events.emit(StreamEvent(type="iteration", num=iteration, max=self._config.max_iterations, content=token_str))
 
             tool_calls: list[ToolCallRequest] = []
             try:
