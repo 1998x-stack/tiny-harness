@@ -111,7 +111,6 @@ async def run_tui_session(agent, model: str):
         console.print()
 
         agent_text = ""
-        printed_len = 0
         try:
             async for event in agent.run_stream(prompt):
                 if event.type == "iteration":
@@ -120,28 +119,17 @@ async def run_tui_session(agent, model: str):
                     tokens = agent.estimate_tokens()
                     tok_str = f"{tokens}" if tokens < 1000 else f"{tokens // 1000}K"
                     if agent_text.strip():
-                        if printed_len < len(agent_text):
-                            console.out(agent_text[printed_len:])
-                        console.print()
                         console.print(md(agent_text.strip(), code_theme="github-dark"))
                         agent_text = ""
-                        printed_len = 0
                     console.print(f"  [iter {iteration}/{max_iter}  {tok_str} tok  {elapsed}s]", style=c["dim"])
 
                 elif event.type == "text_delta" and event.content:
                     agent_text += event.content
-                    new = agent_text[printed_len:]
-                    console.out(new, end="")
-                    printed_len = len(agent_text)
 
                 elif event.type == "tool_start":
                     if agent_text.strip():
-                        if printed_len < len(agent_text):
-                            console.out(agent_text[printed_len:])
-                        console.print()
                         console.print(md(agent_text.strip(), code_theme="github-dark"))
                         agent_text = ""
-                        printed_len = 0
                     args = ""
                     if event.content:
                         try:
@@ -160,9 +148,6 @@ async def run_tui_session(agent, model: str):
                     console.print(f"  ⚠ {event.message}", style=c["err"])
 
             if agent_text.strip():
-                if printed_len < len(agent_text):
-                    console.out(agent_text[printed_len:])
-                console.print()
                 console.print(md(agent_text.strip(), code_theme="github-dark"))
 
         except Exception as e:
