@@ -13,8 +13,10 @@ def search_content(args: dict) -> str:
     try:
         cmd = ["rg", "--line-number", "--no-heading", "--color=never",
                "--max-count", str(max_results), "--no-ignore",
-               "--glob", "!.git", "--glob", "!__pycache__", "--glob", "!*.pyc",
-               pattern, path if os.path.isdir(path) else os.path.dirname(path) or "."]
+               "--glob", "!.git", "--glob", "!__pycache__", "--glob", "!*.pyc"]
+        if file_pattern:
+            cmd.extend(["--glob", file_pattern])
+        cmd.extend([pattern, path if os.path.isdir(path) else os.path.dirname(path) or "."])
         result = subprocess.run(
             cmd,
             capture_output=True, text=True, timeout=10, cwd=path,

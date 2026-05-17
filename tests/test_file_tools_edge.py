@@ -55,7 +55,7 @@ def test_read_file_limit_zero(tmpdir):
     path = os.path.join(tmpdir, "test.txt")
     write_file({"path": path, "content": "line1\nline2\n"})
     result = read_file({"path": path, "limit": 0})
-    assert "Lines" in result
+    assert "limit must be positive" in result
 
 
 def test_list_directory_recursive_with_hidden(tmpdir):

@@ -6,8 +6,10 @@ import shutil
 
 def read_file(args: dict) -> str:
     path = args["path"]
-    offset = args.get("offset", 1)
+    offset = max(1, args.get("offset", 1))
     limit = args.get("limit")
+    if limit is not None and limit <= 0:
+        return f"Error: limit must be positive, got {limit}."
     if not os.path.exists(path):
         return f"Error: File '{path}' not found."
     if os.path.isdir(path):
@@ -15,9 +17,14 @@ def read_file(args: dict) -> str:
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     total = len(lines)
+    if total == 0:
+        return f"[{path}] Lines 0-0 of 0 (empty)\n"
+    if offset > total:
+        return f"Error: offset {offset} exceeds file length {total}."
     selected = lines[offset - 1 : (offset - 1 + limit) if limit else None]
     result = "".join(selected)
-    header = f"[{path}] Lines {offset}-{offset + len(selected) - 1} of {total}\n"
+    end = offset + len(selected) - 1
+    header = f"[{path}] Lines {offset}-{end} of {total}\n"
     output = header + result
     if len(output) > 50000:
         output = output[:50000] + "\n\n[... truncated at 50,000 characters]"
@@ -65,7 +72,15 @@ def find_files(args: dict) -> str:
     path = args.get("path", ".")
     max_results = args.get("max_results", 200)
     matches = []
-    search_path = os.path.join(path, pattern)
+
+    import os as _os
+    base = _os.path.realpath(path)
+    search_path = _os.path.join(base, pattern)
+    if _os.path.isabs(pattern) or ".." in pattern.split(_os.sep):
+        resolved = _os.path.realpath(search_path) if _os.path.exists(search_path) else _os.path.realpath(base)
+        if not resolved.startswith(base + _os.sep) and resolved != base:
+            return f"Error: pattern '{pattern}' escapes workspace."
+
     for i, match in enumerate(glob.glob(search_path, recursive=True)):
         if i >= max_results:
             break
@@ -79,6 +94,8 @@ def delete_file(args: dict) -> str:
     path = args["path"]
     if not os.path.exists(path):
         return f"Error: File '{path}' not found."
+    if os.path.isdir(path):
+        return f"Error: '{path}' is a directory. Use a directory removal tool instead."
     os.remove(path)
     return f"Deleted '{path}'."
 

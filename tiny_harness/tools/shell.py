@@ -4,7 +4,7 @@ import subprocess
 
 MAX_OUTPUT_CHARS = 50_000
 
-_SHELL_METACHARS = frozenset("|;&<>$`(){}!*?")
+_SHELL_METACHARS = frozenset("|;&<>$`(){}!*?~#")
 
 
 def _has_shell_syntax(command: str) -> bool:
@@ -43,6 +43,13 @@ def run_command(args: dict) -> str:
     command = args["command"]
     cwd = args.get("cwd")
     timeout = args.get("timeout", 30)
+
+    if cwd:
+        import os as _os
+        resolved = _os.path.realpath(_os.path.expanduser(cwd))
+        here = _os.path.realpath(".")
+        if _os.path.commonpath([resolved, here]) != here:
+            return f"Error: cwd '{cwd}' is outside workspace."
 
     cmd, use_shell = _build_args(command)
     try:

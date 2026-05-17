@@ -179,6 +179,18 @@ A symlink inside the workspace that points outside will be blocked.
 
 Tool results are truncated at `max_tool_result_chars` (default 50,000 characters). The LLM sees a truncation notice and can use `offset`/`limit` to read specific sections.
 
+### read_file offset is clamped to >= 1
+
+Negative offsets are clamped to 1. Offsets exceeding file length return an error. Empty files return a proper header (`Lines 0-0 of 0 (empty)`). Limit=0 is rejected.
+
+### Shell cwd validated against workspace
+
+The `run_command` tool validates its `cwd` parameter against the workspace boundary. This prevents LLM-injected `cwd="/etc"` from bypassing the FilesystemGuard.
+
+### find_files pattern validated against path escapes
+
+Absolute paths and `..` traversal in the `pattern` parameter are detected and blocked in the `find_files` handler, preventing workspace escapes via `os.path.join(".", "/etc/passwd")`.
+
 ### Binary files return descriptions, not content
 
 `read_file` detects binary files and returns a size/type description instead of raw bytes. The LLM can't meaningfully process binary data.

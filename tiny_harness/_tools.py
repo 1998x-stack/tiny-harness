@@ -89,6 +89,8 @@ class ToolExecutor:
 
         if self._guard and tool.definition.risk_level != "safe":
             path = args.get("path") or args.get("source") or args.get("destination")
+            if not path:
+                path = args.get("cwd")
             if path:
                 try:
                     op = "delete" if tool.definition.risk_level == "destructive" else "write" if tool.definition.risk_level == "mutation" else "read"
