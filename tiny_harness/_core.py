@@ -13,6 +13,7 @@ from tiny_harness._guard import FilesystemGuard
 from tiny_harness._events import EventBus, StreamEvent
 from tiny_harness._loop import AgentLoop
 from tiny_harness._persist import SessionStore
+from tiny_harness._hitl import ApprovalGate, ApprovalHandler
 
 
 class Agent:
@@ -23,8 +24,16 @@ class Agent:
         self._llm_provider = self._create_provider(config)
         self._tool_registry = ToolRegistry()
         self._guard = FilesystemGuard(config.workspace)
-        self._tool_executor = ToolExecutor(self._tool_registry, self._guard, config.timeout_ms, config.max_tool_result_chars)
         self._event_bus = EventBus()
+        self._approval_gate = ApprovalGate(
+            timeout_ms=config.approval_timeout_ms,
+            require_approval_for=set(config.require_approval_for) if config.require_approval_for else None,
+        ) if not config.no_hitl else None
+        self._tool_executor = ToolExecutor(
+            self._tool_registry, self._guard, config.timeout_ms, config.max_tool_result_chars,
+            approval_gate=self._approval_gate,
+            event_bus=self._event_bus,
+        )
         self._loaded_skills: list[str] = []
         self._running = False
         self._store = store
@@ -48,6 +57,14 @@ class Agent:
     @property
     def events(self) -> EventBus:
         return self._event_bus
+
+    @property
+    def approval_gate(self) -> ApprovalGate | None:
+        return self._approval_gate
+
+    def set_approval_handler(self, handler: ApprovalHandler) -> None:
+        if self._approval_gate is not None:
+            self._approval_gate.handler = handler
 
     def on(self, event_type: str, handler) -> None:
         async def filtered(event: StreamEvent):

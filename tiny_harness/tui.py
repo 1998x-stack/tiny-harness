@@ -4,6 +4,8 @@
 import asyncio
 import time
 
+from tiny_harness._hitl import ApprovalDecision, ToolApprovalRequest
+
 
 async def run_tui_session(agent, model: str):
     if not _rich_available():
@@ -34,6 +36,38 @@ async def run_tui_session(agent, model: str):
     console.print(f"  tiny-harness  |  {model}  |  max {max_iter} iter", style=c["bold"])
     console.print("  type /help for commands", style=c["dim"])
     console.print()
+
+    async def tui_approval_handler(request: ToolApprovalRequest) -> ApprovalDecision:
+        console.print()
+        console.print(f"  🔐 Approve '{request.tool_name}'?  (risk: {request.risk_level})", style=c["tool"])
+        for k, v in request.args.items():
+            val = str(v)
+            if len(val) > 80:
+                val = val[:77] + "..."
+            console.print(f"     {k}: {val}", style=c["dim"])
+        while True:
+            resp = (await asyncio.to_thread(console.input, "  [y/n/s(ession)/m(odify)]: ")).strip().lower()
+            if resp == "y":
+                return ApprovalDecision(approved=True)
+            if resp == "s":
+                return ApprovalDecision(approved=True, session_approved=True)
+            if resp == "n" or resp == "":
+                return ApprovalDecision(approved=False, reason="User denied")
+            if resp == "m":
+                modified = dict(request.args)
+                while True:
+                    edit = (await asyncio.to_thread(console.input, "  Modify key=value (empty to finish): ")).strip()
+                    if not edit or "=" not in edit:
+                        break
+                    k, v = edit.split("=", 1)
+                    if k.strip() in modified:
+                        modified[k.strip()] = v.strip()
+                        console.print(f"     Updated {k.strip()} = {v.strip()}", style=c["ok"])
+                    else:
+                        console.print(f"     Unknown arg: {k.strip()}", style=c["err"])
+                return ApprovalDecision(approved=True, modified_args=modified)
+    if agent.approval_gate is not None:
+        agent.approval_gate.handler = tui_approval_handler
 
     while True:
         try:

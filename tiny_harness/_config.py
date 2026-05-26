@@ -15,6 +15,9 @@ class AgentConfig:
     timeout_ms: int = 30_000
     max_tool_result_chars: int = 50_000
     max_tokens: int = 16384
+    require_approval_for: list[str] | None = None
+    approval_timeout_ms: int = 120_000
+    no_hitl: bool = False
 
 
 class Prompt:

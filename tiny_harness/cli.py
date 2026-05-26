@@ -4,6 +4,8 @@ import sys
 import asyncio
 from argparse import ArgumentParser, Namespace
 
+from tiny_harness._hitl import ApprovalDecision, ToolApprovalRequest
+
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(prog="tiny-harness", description="AI agent harness with tools and streaming CLI")
@@ -14,6 +16,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--api-base-url", default="https://api.deepseek.com/v1", help="Custom API base URL")
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
     parser.add_argument("--skills", default="", help="Comma-separated skill names (default: files)")
+    parser.add_argument("--no-hitl", action="store_true", help="Disable human-in-the-loop approval prompts")
     parser.add_argument("--tui", action="store_true", help="Use rich TUI mode (requires 'rich' package)")
     parser.add_argument("--api-key-env", default="DEEPSEEK_API_KEY", help="Env var for API key")
     return parser.parse_args()
@@ -108,14 +111,48 @@ async def _async_input(prompt: str) -> str:
     return await asyncio.to_thread(input, prompt)
 
 
+async def _cli_approval_handler(request: ToolApprovalRequest) -> ApprovalDecision:
+    print(f"\n  🔐 Approve '{request.tool_name}'? (risk: {request.risk_level})")
+    for k, v in request.args.items():
+        val = str(v)
+        if len(val) > 80:
+            val = val[:77] + "..."
+        print(f"     {k}: {val}")
+    while True:
+        resp = (await _async_input("  [y=yes / n=no / s=yes for session / m=modify]: ")).strip().lower()
+        if resp == "y":
+            return ApprovalDecision(approved=True)
+        if resp == "s":
+            return ApprovalDecision(approved=True, session_approved=True)
+        if resp == "n" or resp == "":
+            return ApprovalDecision(approved=False, reason="User denied")
+        if resp == "m":
+            modified = dict(request.args)
+            while True:
+                edit = (await _async_input("  Modify key=value (or empty to finish): ")).strip()
+                if not edit or "=" not in edit:
+                    break
+                k, v = edit.split("=", 1)
+                if k.strip() in modified:
+                    modified[k.strip()] = v.strip()
+                    print(f"     Updated {k.strip()} = {v.strip()}")
+                else:
+                    print(f"     Unknown arg: {k.strip()}")
+            return ApprovalDecision(approved=True, modified_args=modified)
+        print("     Please answer y, n, s, or m.")
+
+
 def main():
     args = parse_args()
     api_key = _get_api_key(args)
 
     from tiny_harness import Agent, Prompt, Config
     prompt = Prompt("You are a helpful AI assistant.")
-    config = Config(model=args.model, api_key=api_key, workspace=args.workspace, provider=args.provider, api_base_url=args.api_base_url, max_iterations=args.max_iterations)
+    config = Config(model=args.model, api_key=api_key, workspace=args.workspace, provider=args.provider, api_base_url=args.api_base_url, max_iterations=args.max_iterations, no_hitl=args.no_hitl)
     agent = Agent(prompt=prompt, config=config)
+
+    if not args.no_hitl:
+        agent.set_approval_handler(_cli_approval_handler)
 
     # Load skills from --skills flag, or default to files if none specified
     skill_names = [s.strip() for s in args.skills.split(",") if s.strip()]

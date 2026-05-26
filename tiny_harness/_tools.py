@@ -7,8 +7,12 @@ from difflib import get_close_matches
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from tiny_harness._events import StreamEvent
+
 if TYPE_CHECKING:
     from tiny_harness._guard import FilesystemGuard
+    from tiny_harness._hitl import ApprovalGate
+    from tiny_harness._events import EventBus
 
 
 @dataclass
@@ -30,6 +34,7 @@ class ToolResult:
     success: bool
     tool_call_id: str
     content: str
+    denied: bool = False
 
     @classmethod
     def ok(cls, call_id: str, content: str) -> "ToolResult":
@@ -38,6 +43,10 @@ class ToolResult:
     @classmethod
     def error(cls, call_id: str, message: str) -> "ToolResult":
         return cls(success=False, tool_call_id=call_id, content=message)
+
+    @classmethod
+    def denial(cls, call_id: str, reason: str) -> "ToolResult":
+        return cls(success=False, tool_call_id=call_id, content=reason, denied=True)
 
 
 class ToolRegistry:
@@ -65,11 +74,13 @@ class ToolRegistry:
 
 
 class ToolExecutor:
-    def __init__(self, registry: ToolRegistry, guard: "FilesystemGuard", timeout_ms: int = 30_000, max_output_chars: int = 50_000):
+    def __init__(self, registry: ToolRegistry, guard: "FilesystemGuard", timeout_ms: int = 30_000, max_output_chars: int = 50_000, approval_gate: "ApprovalGate | None" = None, event_bus: "EventBus | None" = None):
         self._registry = registry
         self._guard = guard
         self._timeout_ms = timeout_ms
         self._max_output_chars = max_output_chars
+        self._approval_gate = approval_gate
+        self._event_bus = event_bus
 
     def get_definitions(self) -> list[dict]:
         return self._registry.get_definitions()
@@ -97,6 +108,25 @@ class ToolExecutor:
                     self._guard.guard(path, op)
                 except Exception as e:
                     return ToolResult.error(call_id, str(e))
+
+        if self._approval_gate is not None:
+            decision = await self._approval_gate.check(name, args, tool.definition.risk_level)
+            if not decision.approved:
+                if self._event_bus is not None:
+                    await self._event_bus.emit(StreamEvent(type="tool_denied", tool_name=name, message=decision.reason))
+                return ToolResult.denial(call_id, f"Tool '{name}' denied: {decision.reason}")
+            if decision.modified_args is not None:
+                args = decision.modified_args
+                if self._guard and tool.definition.risk_level != "safe":
+                    path = args.get("path") or args.get("source") or args.get("destination")
+                    if not path:
+                        path = args.get("cwd")
+                    if path:
+                        try:
+                            op = "delete" if tool.definition.risk_level == "destructive" else "write" if tool.definition.risk_level == "mutation" else "read"
+                            self._guard.guard(path, op)
+                        except Exception as e:
+                            return ToolResult.error(call_id, str(e))
 
         try:
             if asyncio.iscoroutinefunction(tool.handler):

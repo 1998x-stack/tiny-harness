@@ -92,6 +92,8 @@ class AgentLoop:
 
                 if result.success:
                     error_budget.record_success()
+                elif result.denied:
+                    pass
                 else:
                     if not error_budget.record_error():
                         return await self._degraded_finish(collected_text)
