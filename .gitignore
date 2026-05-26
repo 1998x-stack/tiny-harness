@@ -6,3 +6,4 @@ dist/
 build/
 run_iris.sh
 .DS_Store
+.worktrees/
