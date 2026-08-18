@@ -2,6 +2,8 @@
 
 **Minimal AI agent harness — wrap any LLM with tools and a streaming CLI.**
 
+> 中文一句话：极小的 AI Agent 执行环境（harness），给任意 LLM 配上工具、对话循环、流式事件与 CLI 会话。约 1,100 行、零魔法、一个依赖，是 1998x-stack harness 家族的最小基线。
+
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-195%20passed-brightgreen)](https://github.com/1998x-stack/tiny-harness/actions)
 [![Lines](https://img.shields.io/badge/code-1%2C350%20lines-lightgrey)](.)
@@ -50,6 +52,8 @@ tiny-harness "Create hello.py"
 - **1,125 lines** — readable top-to-bottom, CleanRL-inspired code style
 
 ## Quick Start
+
+> 中文要点：三行 pip 安装即可用；CLI 一行运行单次任务，或进入交互式会话；`files` 技能默认加载。
 
 ### Install
 
@@ -122,6 +126,8 @@ tiny-harness "Say hi" --model deepseek-chat --provider deepseek --api-base-url h
 ```
 
 ## Architecture
+
+> 中文要点：`Agent.run(prompt)` 内嵌 MessageManager（对话数组）+ AgentLoop（while 状态机），LLMProvider 负责流式、ToolExecutor 负责「校验→守卫→执行→格式化」。核心循环：prompt → LLM → 工具调用 → 执行 → 结果 → LLM → …→ 最终答案。
 
 ```
 User Prompt
@@ -250,6 +256,22 @@ config = Config(
     provider="deepseek", api_base_url="https://api.deepseek.com/v1",
 )
 ```
+
+## The Harness Lineage（本系定位）
+
+`tiny-harness` 是 1998x-stack 循序渐进 harness 家族的**最小基线**——先做到可读、零魔法、零冗余，再演进出更完整的能力：
+
+| 成员 | 定位 | 与 tiny-harness 的关系 |
+|------|------|------------------------|
+| **tiny-harness** | 最小执行环境：loop + tools + streaming CLI | --- 本仓库（基线） |
+| `mid-harness` | hooks / MCP / 渐进式 skills | 在 hook 之上扩展，不破坏单文件可读性 |
+| `effective-harness` | 零配置 CLI wrapper 实现 Anthropic `twelve-factor agent` | 面向生产约定，tiny 的思路给到上一层 |
+| `mega-harness` | 更完整的全家桶（规划/脚手架） | 集 loop + 调度 + 扩展包 |
+| `agent-loop` | 跨会话的多 Agent 编排（Initializer / Executor） | 从「单会话执行」升级到「跨会话编排」 |
+| `ralph-loop` | 插件式确定性自治循环（文件系统即记忆） | 从「工具封装」到「闭环自治」 |
+| `loop-runner` | Generator–Evaluator 编码验证循环引擎 | 把「写码→验证」固化为循环 |
+
+> 特点：从 tiny 的小而美到 mid/effective 的工程化，再到 agent-loop/ralph-loop 的自治化——每一层都继承上一层的可读性与诚实度。
 
 ## Design Principles
 
