@@ -1,4 +1,3 @@
-# tiny_harness/_tools.py
 from __future__ import annotations
 import json
 import asyncio
@@ -60,7 +59,6 @@ class ToolRegistry:
         self.register(Tool(definition=def_, handler=handler))
 
     def register_tool(self, name: str, description: str, parameters: dict, handler: Callable, risk_level: str = "read_only") -> None:
-        """Convenience method: register a tool without creating a ToolDef explicitly."""
         self.register_from_def(ToolDef(name=name, description=description, parameters=parameters, risk_level=risk_level), handler)
 
     def get(self, name: str) -> Tool | None:
@@ -71,6 +69,15 @@ class ToolRegistry:
 
     def names(self) -> list[str]:
         return list(self._tools.keys())
+
+
+# Only the built-in filesystem tools have an explicit path contract. Arbitrary
+# plugin arguments are not necessarily paths; plugin authors must sandbox any
+# custom filesystem operations themselves.
+_FILE_TOOLS = frozenset({
+    "read_file", "write_file", "list_directory", "find_files",
+    "delete_file", "create_directory", "move_file",
+})
 
 
 class ToolExecutor:
@@ -85,6 +92,31 @@ class ToolExecutor:
     def get_definitions(self) -> list[dict]:
         return self._registry.get_definitions()
 
+    def _guard_args(self, name: str, args: dict, risk_level: str) -> dict:
+        if not self._guard or risk_level == "safe":
+            return args
+        checked = dict(args)
+        if name in _FILE_TOOLS:
+            keys = ("source", "destination") if name == "move_file" else ("path",)
+            for key in keys:
+                if key in checked:
+                    checked[key] = self._guard.guard(checked[key], risk_level)
+            if name == "find_files":
+                # Validate the glob's static prefix and each returned match in
+                # the handler; glob patterns are not plain filesystem paths.
+                import os
+                pattern = checked.get("pattern", "")
+                if os.path.isabs(pattern) or ".." in pattern.replace("\\", "/").split("/"):
+                    raise ValueError("Glob pattern must remain within the workspace")
+        else:
+            # Preserve the legacy guard for external plugins that expose a
+            # single conventional path argument. No generic shell sandbox is
+            # implied by this check.
+            path = checked.get("path") or checked.get("source") or checked.get("destination") or checked.get("cwd")
+            if path:
+                self._guard.guard(path, risk_level)
+        return checked
+
     async def execute(self, name: str, args: dict, call_id: str) -> ToolResult:
         tool = self._registry.get(name)
         if tool is None:
@@ -98,16 +130,12 @@ class ToolExecutor:
         if errors:
             return ToolResult.error(call_id, f"Invalid arguments for '{name}':\n" + "\n".join(f"  - {e}" for e in errors))
 
-        if self._guard and tool.definition.risk_level != "safe":
-            path = args.get("path") or args.get("source") or args.get("destination")
-            if not path:
-                path = args.get("cwd")
-            if path:
-                try:
-                    op = "delete" if tool.definition.risk_level == "destructive" else "write" if tool.definition.risk_level == "mutation" else "read"
-                    self._guard.guard(path, op)
-                except Exception as e:
-                    return ToolResult.error(call_id, str(e))
+        try:
+            self._guard_args(name, args, tool.definition.risk_level)
+        except (OSError, ValueError, TypeError) as e:
+            return ToolResult.error(call_id, str(e))
+        except Exception as e:
+            return ToolResult.error(call_id, str(e))
 
         if self._approval_gate is not None:
             decision = await self._approval_gate.check(name, args, tool.definition.risk_level)
@@ -117,22 +145,23 @@ class ToolExecutor:
                 return ToolResult.denial(call_id, f"Tool '{name}' denied: {decision.reason}")
             if decision.modified_args is not None:
                 args = decision.modified_args
-                if self._guard and tool.definition.risk_level != "safe":
-                    path = args.get("path") or args.get("source") or args.get("destination")
-                    if not path:
-                        path = args.get("cwd")
-                    if path:
-                        try:
-                            op = "delete" if tool.definition.risk_level == "destructive" else "write" if tool.definition.risk_level == "mutation" else "read"
-                            self._guard.guard(path, op)
-                        except Exception as e:
-                            return ToolResult.error(call_id, str(e))
+
+        errors = validate_schema(tool.definition.parameters, args)
+        if errors:
+            return ToolResult.error(call_id, f"Invalid approved arguments for '{name}':\n" + "\n".join(f"  - {e}" for e in errors))
+        try:
+            args = self._guard_args(name, args, tool.definition.risk_level)
+        except Exception as e:
+            return ToolResult.error(call_id, str(e))
 
         try:
             if asyncio.iscoroutinefunction(tool.handler):
                 raw = await asyncio.wait_for(tool.handler(args), timeout=self._timeout_ms / 1000)
             else:
-                raw = tool.handler(args)
+                # A thread keeps blocking handlers from freezing the event
+                # loop. A timed-out thread cannot be forcibly terminated;
+                # plugins must implement their own cancellation for side effects.
+                raw = await asyncio.wait_for(asyncio.to_thread(tool.handler, args), timeout=self._timeout_ms / 1000)
         except asyncio.TimeoutError:
             return ToolResult.error(call_id, f"Tool '{name}' timed out after {self._timeout_ms/1000}s")
         except Exception as e:
@@ -160,20 +189,25 @@ def validate_schema(schema: dict, args: dict) -> list[str]:
     schema_type = schema.get("type")
     if schema_type != "object":
         return errors
+    if not isinstance(args, dict):
+        return [f"arguments should be an object, got {type(args).__name__}"]
     properties = schema.get("properties", {})
     required = schema.get("required", [])
     for field in required:
         if field not in args:
             errors.append(f"'{field}' is required but was not provided")
+    if schema.get("additionalProperties") is False:
+        for key in args.keys() - properties.keys():
+            errors.append(f"'{key}' is not an allowed argument")
     for key, value in args.items():
         if key in properties:
             prop = properties[key]
             expected_type = prop.get("type")
             if expected_type == "string" and not isinstance(value, str):
                 errors.append(f"'{key}' should be a string, got {type(value).__name__}")
-            elif expected_type == "integer" and not isinstance(value, int):
+            elif expected_type == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
                 errors.append(f"'{key}' should be an integer, got {type(value).__name__}")
-            elif expected_type == "number" and not isinstance(value, (int, float)):
+            elif expected_type == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
                 errors.append(f"'{key}' should be a number, got {type(value).__name__}")
             elif expected_type == "boolean" and not isinstance(value, bool):
                 errors.append(f"'{key}' should be a boolean, got {type(value).__name__}")
