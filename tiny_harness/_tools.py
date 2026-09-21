@@ -71,9 +71,8 @@ class ToolRegistry:
         return list(self._tools.keys())
 
 
-# Only the built-in filesystem tools have an explicit path contract. Arbitrary
-# plugin arguments are not necessarily paths; plugin authors must sandbox any
-# custom filesystem operations themselves.
+# Built-in filesystem tools have explicit path contracts. A plugin that uses
+# other argument names must implement its own filesystem confinement.
 _FILE_TOOLS = frozenset({
     "read_file", "write_file", "list_directory", "find_files",
     "delete_file", "create_directory", "move_file",
@@ -101,17 +100,17 @@ class ToolExecutor:
             for key in keys:
                 if key in checked:
                     checked[key] = self._guard.guard(checked[key], risk_level)
+            if name in ("list_directory", "find_files") and "path" not in checked:
+                checked["path"] = self._guard.guard(".", risk_level)
             if name == "find_files":
-                # Validate the glob's static prefix and each returned match in
-                # the handler; glob patterns are not plain filesystem paths.
+                # Glob patterns require separate validation from plain paths.
                 import os
                 pattern = checked.get("pattern", "")
                 if os.path.isabs(pattern) or ".." in pattern.replace("\\", "/").split("/"):
                     raise ValueError("Glob pattern must remain within the workspace")
         else:
-            # Preserve the legacy guard for external plugins that expose a
-            # single conventional path argument. No generic shell sandbox is
-            # implied by this check.
+            # Legacy protection for third-party tools with a conventional
+            # path argument; this does NOT sandbox arbitrary shell commands.
             path = checked.get("path") or checked.get("source") or checked.get("destination") or checked.get("cwd")
             if path:
                 self._guard.guard(path, risk_level)
@@ -132,8 +131,6 @@ class ToolExecutor:
 
         try:
             self._guard_args(name, args, tool.definition.risk_level)
-        except (OSError, ValueError, TypeError) as e:
-            return ToolResult.error(call_id, str(e))
         except Exception as e:
             return ToolResult.error(call_id, str(e))
 
@@ -158,17 +155,15 @@ class ToolExecutor:
             if asyncio.iscoroutinefunction(tool.handler):
                 raw = await asyncio.wait_for(tool.handler(args), timeout=self._timeout_ms / 1000)
             else:
-                # A thread keeps blocking handlers from freezing the event
-                # loop. A timed-out thread cannot be forcibly terminated;
-                # plugins must implement their own cancellation for side effects.
+                # Thread timeouts prevent event-loop blocking, but cannot
+                # terminate a worker already performing side effects.
                 raw = await asyncio.wait_for(asyncio.to_thread(tool.handler, args), timeout=self._timeout_ms / 1000)
         except asyncio.TimeoutError:
             return ToolResult.error(call_id, f"Tool '{name}' timed out after {self._timeout_ms/1000}s")
         except Exception as e:
             return ToolResult.error(call_id, f"Tool '{name}' failed: {e}")
 
-        formatted = self._format(raw)
-        return ToolResult.ok(call_id, formatted)
+        return ToolResult.ok(call_id, self._format(raw))
 
     def _format(self, raw) -> str:
         if raw is None:
