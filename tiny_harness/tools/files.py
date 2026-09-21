@@ -71,20 +71,22 @@ def find_files(args: dict) -> str:
     pattern = args["pattern"]
     path = args.get("path", ".")
     max_results = args.get("max_results", 200)
+    if max_results <= 0:
+        return "Error: max_results must be positive."
+    base = os.path.realpath(path)
+    if os.path.isabs(pattern) or ".." in pattern.replace("\\", "/").split("/"):
+        return f"Error: pattern '{pattern}' escapes workspace."
+    search_path = os.path.join(base, pattern)
     matches = []
-
-    import os as _os
-    base = _os.path.realpath(path)
-    search_path = _os.path.join(base, pattern)
-    if _os.path.isabs(pattern) or ".." in pattern.split(_os.sep):
-        resolved = _os.path.realpath(search_path) if _os.path.exists(search_path) else _os.path.realpath(base)
-        if not resolved.startswith(base + _os.sep) and resolved != base:
-            return f"Error: pattern '{pattern}' escapes workspace."
-
-    for i, match in enumerate(glob.glob(search_path, recursive=True)):
-        if i >= max_results:
+    for match in glob.iglob(search_path, recursive=True):
+        # A glob can traverse symlinked directories, even when the pattern
+        # itself contains no parent traversal. Exclude out-of-base results.
+        resolved = os.path.realpath(match)
+        if os.path.commonpath((base, resolved)) != base:
+            continue
+        matches.append(os.path.relpath(match, base))
+        if len(matches) >= max_results:
             break
-        matches.append(os.path.relpath(match, path))
     if not matches:
         return f"No files matching '{pattern}' found in '{path}'."
     return f"Found {len(matches)} files matching '{pattern}':\n" + "\n".join(f"  {m}" for m in matches)

@@ -81,23 +81,30 @@ class AgentLoop:
 
             self._messages.add_assistant(text="".join(collected_text) if collected_text else None, tool_calls=tool_calls)
             collected_text = []
+            exhausted = False
 
+            # Every advertised call must have exactly one tool result before
+            # another LLM request, even if a prior call exhausted the budget.
             for tc in tool_calls:
-                if not loop_detector.check(tc.name, tc.arguments):
+                if exhausted:
+                    result = ToolResult.error(tc.id, "Skipped: tool error budget exhausted.")
+                elif not loop_detector.check(tc.name, tc.arguments):
                     result = ToolResult.error(tc.id, f"You've called '{tc.name}' with the same arguments {loop_detector.max_repeats} times. Try a different approach.")
                 else:
                     await self._events.emit(StreamEvent(type="tool_start", tool_name=tc.name, content=json.dumps(tc.arguments)))
                     result = await self._tools.execute(tc.name, tc.arguments, tc.id)
                     await self._events.emit(StreamEvent(type="tool_end", tool_name=tc.name, content=result.content[:100]))
 
+                self._messages.add_tool_result(tc.id, result.content)
+                if exhausted or result.denied:
+                    continue
                 if result.success:
                     error_budget.record_success()
-                elif result.denied:
-                    pass
-                else:
-                    if not error_budget.record_error():
-                        return await self._degraded_finish(collected_text)
-                self._messages.add_tool_result(result.tool_call_id, result.content)
+                elif not error_budget.record_error():
+                    exhausted = True
+
+            if exhausted:
+                return await self._degraded_finish(collected_text)
 
             status = self._messages.check_context()
             if status == TokenStatus.NEAR_CAPACITY:
@@ -109,6 +116,11 @@ class AgentLoop:
         self._messages.add_system_notice("You've reached a safety limit. Please provide your best final answer based on what you know, without using any tools.")
         try:
             result = await self._llm.generate(self._messages.to_list(), tools=[])
-            return result.text or "".join(collected_text)
+            final_text = result.text or "".join(collected_text)
         except Exception:
-            return "".join(collected_text) or "Agent stopped."
+            final_text = "".join(collected_text) or "Agent stopped."
+        self._messages.add_assistant(text=final_text, tool_calls=None)
+        # generate() is non-streaming, but stream consumers must see the final answer.
+        if final_text:
+            await self._events.emit(StreamEvent(type="text_delta", content=final_text))
+        return final_text
