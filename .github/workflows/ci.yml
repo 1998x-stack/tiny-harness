@@ -46,6 +46,8 @@ jobs:
   oci-sandbox-smoke:
     name: Real OCI cgroup and network isolation
     runs-on: ubuntu-latest
+    env:
+      TINY_HARNESS_REQUIRE_DOCKER_INTEGRATION: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
