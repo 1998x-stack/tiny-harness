@@ -24,6 +24,9 @@ class AgentConfig:
     sandbox_cpu_seconds: int = 30
     sandbox_memory_mb: int = 1024
     sandbox_file_mb: int = 32
+    sandbox_image: str | None = None  # Immutable OCI @sha256 digest
+    sandbox_cpus: float = 1.0
+    sandbox_pids_limit: int = 64
 
 
 class Prompt:
