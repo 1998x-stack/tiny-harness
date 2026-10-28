@@ -92,6 +92,6 @@ def register(agent) -> None:
             risk_level="dangerous",
             path_args=("cwd",),
         ),
-        partial(run_command_async, structured=True),
+        partial(run_command_async, structured=True, sandbox_mode=agent._config.shell_sandbox, workspace=agent._guard.guard(".")),
     )
     agent._prompt.append(SHELL_PROMPT)
