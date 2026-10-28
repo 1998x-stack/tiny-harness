@@ -26,12 +26,14 @@
 | Phase 1 | [#19](https://github.com/1998x-stack/tiny-harness/pull/19) | OpenAI/Anthropic 流式请求在首次输出前重试 429/5xx/部分网络错误，Retry-After 上限；输出后禁重试 | PR CI 通过；真实 API 冒烟仍待执行 |
 | Phase 4 | [#21](https://github.com/1998x-stack/tiny-harness/pull/21) | ToolDef 显式 path_args、所有声明路径规范化、第三方兼容字段全部检查 | PR CI 通过；仍非 OS 沙箱 |
 | Phase 4 | [#22](https://github.com/1998x-stack/tiny-harness/pull/22) | Draft 2020-12 JSON Schema（嵌套/组合/数组），注册时检查 Schema，拒绝远程引用 | PR CI 通过；引入 jsonschema 运行时依赖 |
+| Phase 5 | [#24](https://github.com/1998x-stack/tiny-harness/pull/24) | Linux Bubblewrap 可选 shell namespace + workspace-only bind, 缺失时 fail-closed | Python CI 通过，实际 namespace smoke 最初被跳过 |
+| Phase 5 | [#25](https://github.com/1998x-stack/tiny-harness/pull/25) | prlimit CPU/虚拟内存/单文件大小逐进程资源约束 | Python CI 通过，非 cgroup 总配额 |
 
 ## 待完成事项（不应标记为已修复）
 
 ### P1：继续按独立 PR 完成
 
-1. **真正的执行沙箱**：Shell 的 cwd、HITL 和环境过滤均不是 filesystem/network sandbox。评估 Linux bubblewrap/container；对 Windows/macOS 另定明确边界。**禁止**宣传当前 Shell 已沙箱化。
+1. **OS 沙箱验证及增强**：已实现可选 Linux Bubblewrap namespace 和 prlimit；尚需真实机器上的隔离测试、cgroup 总资源配额、系统级加固和 Windows/macOS 后端。默认 off 仍是不隔离的 Shell，**禁止**把 opt-in Bubblewrap 描述为完整生产沙箱。
 2. **ToolDef 参数级策略**：基础风险枚举与 no-HITL Shell 显式 opt-in 已完成；后续引入细粒度 allow/ask/deny、按命令参数审批策略，扩展其他危险工具的无 HITL 拒绝边界。
 3. **Provider 全面契约**：Anthropic 自定义 endpoint、截断判断和首次输出前的有限流式重试已完成；仍需统一非流式/流式重试、DeepSeek thinking 透传、HTTP 客户端连接复用及真实 API 冒烟。
 4. **上下文窗口**：已提供可配置窗口与启发式压缩；仍需 provider 真实 usage 回收、tokenizer 精确统计、可审计摘要和更精细的窗口分层治理。
