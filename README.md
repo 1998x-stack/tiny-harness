@@ -206,7 +206,7 @@ agent.tools.register_from_def(
         description="Get current weather for a city.",
         parameters={"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
     ),
-    handler=lambda args: f"Sunny, 22°C in {args[\'city\']}",
+    handler=lambda args: "Sunny, 22°C in " + args["city"],
 )
 
 # Load built-in skills
