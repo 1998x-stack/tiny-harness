@@ -88,6 +88,7 @@ def register(agent) -> None:
                 "required": ["pattern"],
             },
             risk_level="read_only",
+            path_args=("path",),
         ),
         partial(search_content, structured=True),
     )
