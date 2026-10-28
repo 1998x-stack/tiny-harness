@@ -19,7 +19,11 @@ class ToolDef:
     name: str
     description: str
     parameters: dict
-    risk_level: str = "read_only"
+    risk_level: str = "mutation"
+
+    def __post_init__(self) -> None:
+        if self.risk_level not in ("safe", "read_only", "mutation", "destructive", "dangerous"):
+            raise ValueError(f"Unknown tool risk_level: {self.risk_level!r}")
 
 
 @dataclass
@@ -58,7 +62,7 @@ class ToolRegistry:
     def register_from_def(self, def_: ToolDef, handler: Callable) -> None:
         self.register(Tool(definition=def_, handler=handler))
 
-    def register_tool(self, name: str, description: str, parameters: dict, handler: Callable, risk_level: str = "read_only") -> None:
+    def register_tool(self, name: str, description: str, parameters: dict, handler: Callable, risk_level: str = "mutation") -> None:
         self.register_from_def(ToolDef(name=name, description=description, parameters=parameters, risk_level=risk_level), handler)
 
     def get(self, name: str) -> Tool | None:
@@ -80,19 +84,20 @@ _FILE_TOOLS = frozenset({
 
 
 class ToolExecutor:
-    def __init__(self, registry: ToolRegistry, guard: "FilesystemGuard", timeout_ms: int = 30_000, max_output_chars: int = 50_000, approval_gate: "ApprovalGate | None" = None, event_bus: "EventBus | None" = None):
+    def __init__(self, registry: ToolRegistry, guard: "FilesystemGuard", timeout_ms: int = 30_000, max_output_chars: int = 50_000, approval_gate: "ApprovalGate | None" = None, event_bus: "EventBus | None" = None, allow_unsafe_shell: bool = False):
         self._registry = registry
         self._guard = guard
         self._timeout_ms = timeout_ms
         self._max_output_chars = max_output_chars
         self._approval_gate = approval_gate
         self._event_bus = event_bus
+        self._allow_unsafe_shell = allow_unsafe_shell
 
     def get_definitions(self) -> list[dict]:
         return self._registry.get_definitions()
 
     def _guard_args(self, name: str, args: dict, risk_level: str) -> dict:
-        if not self._guard or risk_level == "safe":
+        if not self._guard:
             return args
         checked = dict(args)
         if name == "run_command":
@@ -128,6 +133,13 @@ class ToolExecutor:
             if suggestions:
                 msg += f" Did you mean: {', '.join(suggestions)}?"
             return ToolResult.error(call_id, msg)
+
+        if (self._approval_gate is None and name == "run_command"
+                and not self._allow_unsafe_shell):
+            return ToolResult.denial(
+                call_id,
+                "Shell tool requires approval or explicit allow_unsafe_shell=True.",
+            )
 
         errors = validate_schema(tool.definition.parameters, args)
         if errors:

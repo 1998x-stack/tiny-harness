@@ -18,6 +18,7 @@ class AgentConfig:
     require_approval_for: list[str] | None = None
     approval_timeout_ms: int = 120_000
     no_hitl: bool = False
+    allow_unsafe_shell: bool = False
 
 
 class Prompt:
