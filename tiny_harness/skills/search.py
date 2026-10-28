@@ -1,4 +1,6 @@
 # tiny_harness/skills/search.py
+from functools import partial
+
 from tiny_harness.tools.search import search_content
 from tiny_harness._tools import ToolDef
 
@@ -87,6 +89,6 @@ def register(agent) -> None:
             },
             risk_level="read_only",
         ),
-        search_content,
+        partial(search_content, structured=True),
     )
     agent._prompt.append(SEARCH_PROMPT)
