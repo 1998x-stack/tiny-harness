@@ -5,7 +5,7 @@
 > 中文一句话：极小的 AI Agent 执行环境（harness），给任意 LLM 配上工具、对话循环、流式事件与 CLI 会话。约 1,100 行、零魔法、一个依赖，是 1998x-stack harness 家族的最小基线。
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-195%20passed-brightgreen)](https://github.com/1998x-stack/tiny-harness/actions)
+[![Python tests](https://github.com/1998x-stack/tiny-harness/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/1998x-stack/tiny-harness/actions/workflows/ci.yml)
 [![Lines](https://img.shields.io/badge/code-1%2C350%20lines-lightgrey)](.)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -229,7 +229,7 @@ agent.on("error", lambda e: print(f"Error: {e.message}"))
 | `model` | required | Model identifier |
 | `api_key` | required | Provider API key |
 | `workspace` | required | Root directory for file operations |
-| `provider` | `"anthropic"` | `"anthropic"`, `"openai"`, `"deepseek"` |
+| `provider` | `"deepseek"` | `"anthropic"`, `"openai"`, `"deepseek"` |
 | `api_base_url` | provider default | Custom API endpoint |
 | `max_iterations` | `25` | Max loop iterations |
 | `max_errors` | `10` | Total tool error budget |
@@ -305,6 +305,10 @@ pytest tests/ --ignore=tests/test_integration.py
 # Run integration tests (requires ANTHROPIC_API_KEY)
 ANTHROPIC_API_KEY="sk-ant-..." pytest tests/test_integration.py -v -m integration
 ```
+
+## Security
+
+The built-in Shell skill is **not** an OS sandbox. Read [security boundaries](docs/security.md) and the [phased optimization status](docs/OPTIMIZATION_STATUS.md) before deploying to untrusted environments.
 
 ## License
 
