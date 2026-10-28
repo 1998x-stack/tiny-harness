@@ -83,25 +83,37 @@ class AgentLoop:
             collected_text = []
             exhausted = False
 
-            # Every advertised call must have exactly one tool result before
-            # another LLM request, even if a prior call exhausted the budget.
-            for tc in tool_calls:
-                if exhausted:
-                    result = ToolResult.error(tc.id, "Skipped: tool error budget exhausted.")
-                elif not loop_detector.check(tc.name, tc.arguments):
-                    result = ToolResult.error(tc.id, f"You've called '{tc.name}' with the same arguments {loop_detector.max_repeats} times. Try a different approach.")
-                else:
-                    await self._events.emit(StreamEvent(type="tool_start", tool_name=tc.name, content=json.dumps(tc.arguments)))
-                    result = await self._tools.execute(tc.name, tc.arguments, tc.id)
-                    await self._events.emit(StreamEvent(type="tool_end", tool_name=tc.name, content=result.content[:100]))
+            # Preserve the transcript even when observers, tools or cancellation
+            # interrupt the batch. Providers require one result per tool_call.
+            completed_count = 0
+            try:
+                for tc in tool_calls:
+                    if exhausted:
+                        result = ToolResult.error(tc.id, "Skipped: tool error budget exhausted.")
+                    elif not loop_detector.check(tc.name, tc.arguments):
+                        result = ToolResult.error(tc.id, f"You've called '{tc.name}' with the same arguments {loop_detector.max_repeats} times. Try a different approach.")
+                    else:
+                        try:
+                            await self._events.emit(StreamEvent(type="tool_start", tool_name=tc.name, content=json.dumps(tc.arguments)))
+                            result = await self._tools.execute(tc.name, tc.arguments, tc.id)
+                            await self._events.emit(StreamEvent(type="tool_end", tool_name=tc.name, content=result.content[:100]))
+                        except Exception as e:
+                            # Do not leave a bare assistant(tool_calls) behind.
+                            result = ToolResult.error(tc.id, f"Tool '{tc.name}' interrupted: {e}")
 
-                self._messages.add_tool_result(tc.id, result.content)
-                if exhausted or result.denied:
-                    continue
-                if result.success:
-                    error_budget.record_success()
-                elif not error_budget.record_error():
-                    exhausted = True
+                    self._messages.add_tool_result(tc.id, result.content)
+                    completed_count += 1
+                    if exhausted or result.denied:
+                        continue
+                    if result.success:
+                        error_budget.record_success()
+                    elif not error_budget.record_error():
+                        exhausted = True
+            finally:
+                # This also runs on asyncio.CancelledError, which derives
+                # from BaseException on supported Python versions.
+                for pending in tool_calls[completed_count:]:
+                    self._messages.add_tool_result(pending.id, "Interrupted: tool execution did not complete.")
 
             if exhausted:
                 return await self._degraded_finish(collected_text)

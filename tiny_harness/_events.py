@@ -1,4 +1,5 @@
 # tiny_harness/_events.py
+import logging
 from dataclasses import dataclass
 from collections.abc import Callable, Awaitable
 from typing import Any
@@ -23,5 +24,8 @@ class EventBus:
         self._handlers.append(handler)
 
     async def emit(self, event: StreamEvent) -> None:
-        for handler in self._handlers:
-            await handler(event)
+        for handler in tuple(self._handlers):
+            try:
+                await handler(event)
+            except Exception:
+                logging.getLogger(__name__).exception("Event subscriber failed for %s", event.type)
