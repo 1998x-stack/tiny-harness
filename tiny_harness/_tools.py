@@ -135,7 +135,11 @@ class ToolExecutor:
             return ToolResult.error(call_id, str(e))
 
         if self._approval_gate is not None:
-            decision = await self._approval_gate.check(name, args, tool.definition.risk_level)
+            try:
+                decision = await self._approval_gate.check(name, args, tool.definition.risk_level)
+            except Exception as e:
+                # An approval UI failure must never authorize the operation.
+                return ToolResult.denial(call_id, f"Tool '{name}' approval failed: {e}")
             if not decision.approved:
                 if self._event_bus is not None:
                     await self._event_bus.emit(StreamEvent(type="tool_denied", tool_name=name, message=decision.reason))
