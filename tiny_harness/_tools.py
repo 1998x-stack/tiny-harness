@@ -95,7 +95,11 @@ class ToolExecutor:
         if not self._guard or risk_level == "safe":
             return args
         checked = dict(args)
-        if name in _FILE_TOOLS:
+        if name == "run_command":
+            # The executor owns the workspace contract. Never let subprocess
+            # inherit an unrelated process working directory.
+            checked["cwd"] = self._guard.guard(checked.get("cwd") or ".", risk_level)
+        elif name in _FILE_TOOLS:
             keys = ("source", "destination") if name == "move_file" else ("path",)
             for key in keys:
                 if key in checked:
