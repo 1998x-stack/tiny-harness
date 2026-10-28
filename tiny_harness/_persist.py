@@ -2,6 +2,7 @@
 """JSONL-based session persistence for tiny-harness conversations."""
 import json
 import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,14 +35,14 @@ class SessionStore:
             record["content"] = content
         if tool_calls:
             record["tool_calls"] = [
-                {"name": tc["name"], "arguments": tc.get("arguments", {})}
-                if isinstance(tc, dict) else {"name": tc.name, "arguments": tc.arguments}
+                {"id": tc.get("id", ""), "name": tc["name"], "arguments": tc.get("arguments", {})}
+                if isinstance(tc, dict) else {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in tool_calls
             ]
         if tool_results:
             record["tool_results"] = [
-                {"id": tr.get("tool_call_id", ""), "content": str(tr.get("content", ""))[:200]}
-                if isinstance(tr, dict) else {"id": tr.tool_call_id, "content": str(tr.content)[:200]}
+                {"id": tr.get("id") or tr.get("tool_call_id", ""), "content": str(tr.get("content", ""))}
+                if isinstance(tr, dict) else {"id": tr.tool_call_id, "content": str(tr.content)}
                 for tr in tool_results
             ]
         if token_usage:
@@ -54,8 +55,26 @@ class SessionStore:
             record["metadata"] = metadata
 
         filepath = self._session_path(session_id)
-        with open(filepath, "a", encoding="utf-8") as f:
+        fd = os.open(filepath, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        os.chmod(filepath, 0o600)
+
+    def replace_turns(self, session_id: str, records: list[dict]) -> None:
+        """Atomically replace a complete conversation snapshot (idempotent /save)."""
+        target = self._session_path(session_id)
+        fd, temp_name = tempfile.mkstemp(prefix=".session-", suffix=".tmp", dir=self._base)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                for record in records:
+                    file.write(json.dumps(record, ensure_ascii=False) + "\n")
+                file.flush()
+                os.fsync(file.fileno())
+            os.chmod(temp_name, 0o600)
+            os.replace(temp_name, target)
+        finally:
+            if os.path.exists(temp_name):
+                os.remove(temp_name)
 
     def load_session(self, session_id: str) -> list[dict]:
         filepath = self._session_path(session_id)
@@ -63,10 +82,17 @@ class SessionStore:
             return []
         records = []
         with open(filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    records.append(json.loads(line))
+            lines = f.readlines()
+        for index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                # Crash-safe loading: ignore only an incomplete trailing record.
+                if index == len(lines) - 1:
+                    break
+                raise
         return records
 
     def list_sessions(self) -> list[dict]:
