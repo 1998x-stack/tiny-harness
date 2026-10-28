@@ -22,6 +22,8 @@
 | Phase 2 | [#14](https://github.com/1998x-stack/tiny-harness/pull/14) | ToolDef 风险等级默认 mutation；拒绝未知等级；safe 路径仍受检查；无 HITL Shell 显式 opt-in | PR CI 通过 |
 | Phase 3 | [#15](https://github.com/1998x-stack/tiny-harness/pull/15) | context_window 输入预算、历史工具结果压缩、完整轮次淘汰、超限时拒绝 LLM 请求 | PR CI 通过；估算值非精确 tokenizer |
 | Phase 1 | [#16](https://github.com/1998x-stack/tiny-harness/pull/16) | Anthropic SSE 截断检测、message_stop 校验、usage/finish、可配置网关 | PR CI 通过；真实 API 冒烟仍待执行 |
+| Phase 2 | [#18](https://github.com/1998x-stack/tiny-harness/pull/18) | ToolOutcome 显式成功/失败契约，文件、搜索、Shell 异常传给 ErrorBudget | PR CI 通过；低层直接调用保留字符串兼容 |
+| Phase 1 | [#19](https://github.com/1998x-stack/tiny-harness/pull/19) | OpenAI/Anthropic 流式请求在首次输出前重试 429/5xx/部分网络错误，Retry-After 上限；输出后禁重试 | PR CI 通过；真实 API 冒烟仍待执行 |
 
 ## 待完成事项（不应标记为已修复）
 
@@ -29,9 +31,9 @@
 
 1. **真正的执行沙箱**：Shell 的 cwd、HITL 和环境过滤均不是 filesystem/network sandbox。评估 Linux bubblewrap/container；对 Windows/macOS 另定明确边界。**禁止**宣传当前 Shell 已沙箱化。
 2. **ToolDef 参数级策略**：基础风险枚举与 no-HITL Shell 显式 opt-in 已完成；后续引入细粒度 allow/ask/deny、按命令参数审批策略，扩展其他危险工具的无 HITL 拒绝边界。
-3. **Provider 全面契约**：Anthropic 自定义 endpoint 与截断判断已完成；仍需流式重试（仅首输出前）、`Retry-After`、DeepSeek thinking 透传、真实 API 冒烟。
+3. **Provider 全面契约**：Anthropic 自定义 endpoint、截断判断和首次输出前的有限流式重试已完成；仍需统一非流式/流式重试、DeepSeek thinking 透传、HTTP 客户端连接复用及真实 API 冒烟。
 4. **上下文窗口**：已提供可配置窗口与启发式压缩；仍需 provider 真实 usage 回收、tokenizer 精确统计、可审计摘要和更精细的窗口分层治理。
-5. **ToolResult 失败语义**：内部 handler 返回 `Error: ...` 时不应无条件标记成功；改用结构化失败而非文本启发式。
+5. **ToolResult 失败语义**：内置 File/Search/Shell 的结构化失败状态已接入 ErrorBudget；后续要求新工具优先返回 `ToolOutcome`，逐步覆盖非结构化第三方 handler 和完整日志/事件成功率指标。
 
 ### P2：持续质量提升
 
