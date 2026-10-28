@@ -58,6 +58,29 @@ class AgentLoop:
         loop_detector = LoopDetector()
 
         for iteration in range(1, self._config.max_iterations + 1):
+            # Enforce the provider input budget *before* making an API call.
+            # Keep a reserve for the configured maximum output tokens.
+            status = self._messages.check_context()
+            if status != TokenStatus.OK:
+                stats = self._messages.compact(
+                    target_tokens=int(self._messages.max_input_tokens * 0.75)
+                )
+                await self._events.emit(StreamEvent(
+                    type="context",
+                    content=json.dumps(stats),
+                    message="Context compressed to respect provider input budget",
+                ))
+            if self._messages.check_context() == TokenStatus.OVER_CAPACITY:
+                final_text = (
+                    "Agent stopped: input context exceeds configured context_window "
+                    "even after compaction. Shorten the current prompt or reduce "
+                    "the system instructions."
+                )
+                self._messages.add_assistant(text=final_text, tool_calls=None)
+                await self._events.emit(StreamEvent(type="error", message=final_text))
+                await self._events.emit(StreamEvent(type="text_delta", content=final_text))
+                return final_text
+
             token_estimate = self._messages.estimate_tokens()
             token_str = f"{token_estimate}" if token_estimate < 1000 else f"{token_estimate // 1000}K"
             await self._events.emit(StreamEvent(type="iteration", num=iteration, max=self._config.max_iterations, content=token_str))

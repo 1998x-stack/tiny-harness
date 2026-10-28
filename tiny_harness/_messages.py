@@ -26,11 +26,63 @@ class TokenBudget:
 
 
 class MessageManager:
-    def __init__(self, prompt: Prompt):
+    def __init__(self, prompt: Prompt, max_input_tokens: int = 200_000):
+        if max_input_tokens <= 0:
+            raise ValueError("max_input_tokens must be positive")
         # Keep the Prompt, not just a snapshot: skills can be loaded later.
         self._prompt = prompt
         self.messages: list[dict] = [{"role": "system", "content": prompt.to_string()}]
-        self._token_budget = TokenBudget()
+        self._token_budget = TokenBudget(max_tokens=max_input_tokens)
+
+    @property
+    def max_input_tokens(self) -> int:
+        return self._token_budget.max_tokens
+
+    def compact(self, target_tokens: int | None = None) -> dict[str, int]:
+        """Bound context without breaking assistant/tool-call groupings.
+
+        First condense oversized tool outputs, then discard complete oldest
+        dialogue turns (from one user message up to the next user message).
+        Never remove the current/latest user turn or the system prompt.
+        """
+        self._sync_system_prompt()
+        target = target_tokens if target_tokens is not None else self.max_input_tokens
+        target = min(max(1, target), self.max_input_tokens)
+        before = self.estimate_tokens()
+        shortened = removed = 0
+        if before <= target:
+            return {"before": before, "after": before, "shortened": 0, "removed": 0}
+
+        for message in self.messages[1:]:
+            if self.estimate_tokens() <= target:
+                break
+            if message.get("role") != "tool":
+                continue
+            content = message.get("content")
+            if not isinstance(content, str) or len(content) <= 1200:
+                continue
+            message["content"] = (
+                content[:450] + "\n[... older tool result compacted ...]\n" + content[-450:]
+            )
+            shortened += 1
+
+        while self.estimate_tokens() > target:
+            # Find the next user turn: the initial completed turn is everything
+            # before it. Never split an assistant tool_calls/result pair.
+            next_user = next(
+                (i for i in range(2, len(self.messages))
+                 if self.messages[i].get("role") == "user"),
+                None,
+            )
+            if next_user is None:
+                break
+            del self.messages[1:next_user]
+            removed += 1
+
+        return {
+            "before": before, "after": self.estimate_tokens(),
+            "shortened": shortened, "removed": removed,
+        }
 
     def _sync_system_prompt(self) -> None:
         self.messages[0]["content"] = self._prompt.to_string()
