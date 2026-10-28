@@ -76,7 +76,7 @@ def run_command(args: dict) -> str:
 
 # The agent registers the async entrypoint below. Unlike the legacy sync helper
 # it can stop its whole process group when the executor cancels the coroutine.
-async def run_command_async(args: dict, *, structured: bool = False, sandbox_mode: str = "off", workspace: str | None = None) -> str | ToolOutcome:
+async def run_command_async(args: dict, *, structured: bool = False, sandbox_mode: str = "off", workspace: str | None = None, sandbox_cpu_seconds: int = 30, sandbox_memory_mb: int = 1024, sandbox_file_mb: int = 32) -> str | ToolOutcome:
     import asyncio
     import os
     import signal
@@ -103,6 +103,8 @@ async def run_command_async(args: dict, *, structured: bool = False, sandbox_mod
         # Fail closed: do not use an ordinary shell if bwrap is absent.
         cmd, use_shell = build_bubblewrap_argv(
             command, workspace=workspace, cwd=cwd,
+            cpu_seconds=sandbox_cpu_seconds, memory_mb=sandbox_memory_mb,
+            file_mb=sandbox_file_mb,
         ), False
         cwd = workspace
     else:
