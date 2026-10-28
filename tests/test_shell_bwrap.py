@@ -18,7 +18,7 @@ def workspace(tmp_path):
 
 def test_sandbox_command_is_structured_and_never_interpolated(workspace, monkeypatch):
     monkeypatch.setattr("tiny_harness._sandbox.shutil.which",
-                        lambda name, path=None: "/usr/bin/bwrap")
+                        lambda name, path=None: "/usr/bin/" + name)
     marker = "echo hello; printf 'unsafe?'; echo --ro-bind"
     argv = build_bubblewrap_argv(marker, workspace=str(workspace), cwd=None)
     assert argv[0] == "/usr/bin/bwrap"
@@ -33,6 +33,10 @@ def test_sandbox_command_is_structured_and_never_interpolated(workspace, monkeyp
     assert "--share-net" not in argv
     assert "--ro-bind-try" not in argv
     assert argv[-3:] == ["/bin/sh", "-c", marker]
+    assert "--cpu=30" in argv
+    assert "--as=1073741824" in argv
+    assert "--fsize=33554432" in argv
+    assert argv[argv.index("--") + 1] == "/usr/bin/prlimit"
     assert argv[argv.index("--chdir") + 1] == "/workspace"
     # The container root is isolated; host / and /etc are not bulk mounted.
     assert not any(
@@ -44,7 +48,7 @@ def test_sandbox_command_is_structured_and_never_interpolated(workspace, monkeyp
 def test_sandbox_maps_nested_working_directory(workspace, monkeypatch):
     (workspace / "nested").mkdir()
     monkeypatch.setattr("tiny_harness._sandbox.shutil.which",
-                        lambda name, path=None: "/usr/bin/bwrap")
+                        lambda name, path=None: "/usr/bin/" + name)
     argv = build_bubblewrap_argv(
         "pwd", workspace=str(workspace), cwd=str(workspace / "nested")
     )
@@ -53,7 +57,7 @@ def test_sandbox_maps_nested_working_directory(workspace, monkeypatch):
 
 def test_sandbox_blocks_workspace_escape_and_missing_cwd(workspace, tmp_path, monkeypatch):
     monkeypatch.setattr("tiny_harness._sandbox.shutil.which",
-                        lambda name, path=None: "/usr/bin/bwrap")
+                        lambda name, path=None: "/usr/bin/" + name)
     for cwd in (str(tmp_path), str(workspace / "missing")):
         with pytest.raises(SandboxUnavailable):
             build_bubblewrap_argv("true", workspace=str(workspace), cwd=cwd)
