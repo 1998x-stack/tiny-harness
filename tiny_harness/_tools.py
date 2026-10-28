@@ -75,7 +75,7 @@ class ToolRegistry:
 # other argument names must implement its own filesystem confinement.
 _FILE_TOOLS = frozenset({
     "read_file", "write_file", "list_directory", "find_files",
-    "delete_file", "create_directory", "move_file",
+    "delete_file", "create_directory", "move_file", "search_content",
 })
 
 
@@ -100,7 +100,7 @@ class ToolExecutor:
             for key in keys:
                 if key in checked:
                     checked[key] = self._guard.guard(checked[key], risk_level)
-            if name in ("list_directory", "find_files") and "path" not in checked:
+            if name in ("list_directory", "find_files", "search_content") and "path" not in checked:
                 checked["path"] = self._guard.guard(".", risk_level)
             if name == "find_files":
                 # Glob patterns require separate validation from plain paths.
