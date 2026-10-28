@@ -55,7 +55,12 @@ class SessionApprovals:
         self._approved_levels: set[str] = set()
 
     def approve_for_session(self, risk_level: str) -> None:
-        """Approve this risk level and all lower levels for the session."""
+        """Remember only low- or medium-risk approvals.
+
+        Destructive/dangerous tools must be approved on each invocation.
+        """
+        if risk_level not in ("safe", "read_only", "mutation"):
+            return
         for level in self._RISK_ORDER:
             self._approved_levels.add(level)
             if level == risk_level:
@@ -131,7 +136,7 @@ class ApprovalGate:
         if not self.needs_approval(tool_name, risk_level):
             return ApprovalDecision(approved=True, reason="auto-approved (low risk)")
 
-        if self._session.is_approved(risk_level):
+        if risk_level not in ("destructive", "dangerous") and self._session.is_approved(risk_level):
             return ApprovalDecision(approved=True, reason="session-approved")
 
         if self._handler is None:

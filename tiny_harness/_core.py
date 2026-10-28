@@ -149,6 +149,8 @@ class Agent:
 
     def clear(self) -> None:
         self._messages.clear()
+        if self._approval_gate is not None:
+            self._approval_gate.session.clear()
 
     def start_session(self, session_id: str | None = None) -> str:
         if self._session_id is not None:

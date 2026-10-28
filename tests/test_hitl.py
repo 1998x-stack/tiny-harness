@@ -29,19 +29,16 @@ def test_session_approvals_cascade_upward():
     assert sa.is_approved("dangerous") is False
 
 
-def test_session_approvals_destructive_not_cascaded():
+def test_session_approvals_destructive_not_persisted():
     sa = SessionApprovals()
     sa.approve_for_session("destructive")
-    assert sa.is_approved("mutation") is True
-    assert sa.is_approved("destructive") is True
-    assert sa.is_approved("dangerous") is False
+    assert not any(sa.is_approved(level) for level in SessionApprovals._RISK_ORDER)
 
 
-def test_session_approvals_dangerous_covers_all():
+def test_session_approvals_dangerous_not_persisted():
     sa = SessionApprovals()
     sa.approve_for_session("dangerous")
-    for level in ["safe", "read_only", "mutation", "destructive", "dangerous"]:
-        assert sa.is_approved(level) is True
+    assert not any(sa.is_approved(level) for level in SessionApprovals._RISK_ORDER)
 
 
 def test_session_approvals_clear():
