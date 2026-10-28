@@ -1,4 +1,6 @@
 # tiny_harness/skills/files.py
+from functools import partial
+
 from tiny_harness.tools.files import (
     read_file, write_file, list_directory, find_files,
     delete_file, create_directory, move_file,
@@ -76,30 +78,30 @@ Discover → Read → Write → Verify is the standard pattern:
 def register(agent) -> None:
     agent.tools.register_from_def(
         ToolDef(name="read_file", description="Read file contents from the filesystem. Returns text content. For large files, use offset and limit to read specific sections. Binary files return a size/type description instead of raw content.", parameters={"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file to read."}, "offset": {"type": "integer", "description": "Line number to start reading from (1-indexed). Default: 1."}, "limit": {"type": "integer", "description": "Maximum number of lines to read. Omit to read the entire file."}}, "required": ["path"]}, risk_level="read_only"),
-        read_file,
+        partial(read_file, structured=True),
     )
     agent.tools.register_from_def(
         ToolDef(name="write_file", description="Create a new file or overwrite an existing one. Auto-creates parent directories. WARNING: Overwrites existing files without confirmation. Verify with read_file if unsure about current contents.", parameters={"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file to create or overwrite."}, "content": {"type": "string", "description": "The text content to write to the file."}}, "required": ["path", "content"]}, risk_level="mutation"),
-        write_file,
+        partial(write_file, structured=True),
     )
     agent.tools.register_from_def(
         ToolDef(name="list_directory", description="List files and subdirectories in a directory. Shows names, types (file/dir), and sizes. Use to understand project structure before making changes.", parameters={"type": "object", "properties": {"path": {"type": "string", "description": "Directory to list. Default: current directory."}, "pattern": {"type": "string", "description": "Glob pattern to filter (e.g., '*.py')."}, "recursive": {"type": "boolean", "description": "List recursively if true. Default: false."}}}, risk_level="read_only"),
-        list_directory,
+        partial(list_directory, structured=True),
     )
     agent.tools.register_from_def(
         ToolDef(name="find_files", description="Find files matching a glob pattern. Supports recursive wildcards like '**/*.py'. Use to discover file locations before reading them.", parameters={"type": "object", "properties": {"pattern": {"type": "string", "description": "Glob pattern (e.g., '**/*.py', 'src/**/*test*')."}, "path": {"type": "string", "description": "Directory to search in. Default: current directory."}, "max_results": {"type": "integer", "description": "Maximum number of results. Default: 200."}}, "required": ["pattern"]}, risk_level="read_only"),
-        find_files,
+        partial(find_files, structured=True),
     )
     agent.tools.register_from_def(
         ToolDef(name="delete_file", description="Permanently delete a file. IRREVERSIBLE — cannot be undone. Prefer move_file to archive. Always confirm what you're deleting by reading or listing first.", parameters={"type": "object", "properties": {"path": {"type": "string", "description": "Path to the file to delete permanently."}}, "required": ["path"]}, risk_level="destructive"),
-        delete_file,
+        partial(delete_file, structured=True),
     )
     agent.tools.register_from_def(
         ToolDef(name="create_directory", description="Create a directory and any needed parent directories. Safe to call on existing directories (no error).", parameters={"type": "object", "properties": {"path": {"type": "string", "description": "Path to the directory to create."}}, "required": ["path"]}, risk_level="mutation"),
-        create_directory,
+        partial(create_directory, structured=True),
     )
     agent.tools.register_from_def(
         ToolDef(name="move_file", description="Move or rename a file or directory. Overwrites the destination if it already exists. Safer alternative to delete_file for removing files.", parameters={"type": "object", "properties": {"source": {"type": "string", "description": "Current path of the file or directory."}, "destination": {"type": "string", "description": "New path for the file or directory."}}, "required": ["source", "destination"]}, risk_level="mutation"),
-        move_file,
+        partial(move_file, structured=True),
     )
     agent._prompt.append(FILES_PROMPT_SECTION)

@@ -2,6 +2,8 @@
 import shlex
 import subprocess
 
+from tiny_harness._tool_outcome import ToolOutcome
+
 MAX_OUTPUT_CHARS = 50_000
 
 _SHELL_METACHARS = frozenset("|;&<>$`(){}!*?~#")
@@ -74,7 +76,7 @@ def run_command(args: dict) -> str:
 
 # The agent registers the async entrypoint below. Unlike the legacy sync helper
 # it can stop its whole process group when the executor cancels the coroutine.
-async def run_command_async(args: dict) -> str:
+async def run_command_async(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     import asyncio
     import os
     import signal
@@ -83,7 +85,7 @@ async def run_command_async(args: dict) -> str:
     cwd = args.get("cwd")
     timeout = args.get("timeout", 30)
     if not isinstance(timeout, (int, float)) or timeout <= 0:
-        return "Error: timeout must be positive."
+        return ToolOutcome.error("Error: timeout must be positive.") if structured else "Error: timeout must be positive."
 
     # Do not let subprocesses inherit provider secrets.
     safe_keys = {"PATH", "HOME", "LANG", "TERM", "TMPDIR", "VIRTUAL_ENV", "PYTHONPATH"}
@@ -143,7 +145,7 @@ async def run_command_async(args: dict) -> str:
         await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
         if isinstance(exc, asyncio.CancelledError):
             raise
-        return f"Error: Command timed out after {timeout}s"
+        return ToolOutcome.error(f"Error: Command timed out after {timeout}s") if structured else f"Error: Command timed out after {timeout}s"
 
     output = stdout.decode("utf-8", errors="replace")
     if stderr:
@@ -154,4 +156,6 @@ async def run_command_async(args: dict) -> str:
         output = "(no output)"
     if len(output) > MAX_OUTPUT_CHARS:
         output = output[:MAX_OUTPUT_CHARS] + f"\n\n[... truncated at {MAX_OUTPUT_CHARS} characters]"
+    if structured:
+        return ToolOutcome(success=process.returncode == 0, content=output)
     return output

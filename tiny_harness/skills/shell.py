@@ -1,4 +1,6 @@
 # tiny_harness/skills/shell.py
+from functools import partial
+
 from tiny_harness.tools.shell import run_command_async
 from tiny_harness._tools import ToolDef
 
@@ -89,6 +91,6 @@ def register(agent) -> None:
             },
             risk_level="dangerous",
         ),
-        run_command_async,
+        partial(run_command_async, structured=True),
     )
     agent._prompt.append(SHELL_PROMPT)

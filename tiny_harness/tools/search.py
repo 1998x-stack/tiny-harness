@@ -3,8 +3,10 @@ import os
 import re
 import subprocess
 
+from tiny_harness._tool_outcome import ToolOutcome
 
-def search_content(args: dict) -> str:
+
+def search_content(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     pattern = args["pattern"]
     path = args.get("path", ".")
     file_pattern = args.get("file_pattern")
@@ -22,9 +24,17 @@ def search_content(args: dict) -> str:
             capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL,
         )
         if result.returncode not in (0, 1):
+            if structured:
+                return ToolOutcome.error(f"Error: ripgrep failed: {result.stderr.strip()}")
             raise RuntimeError(result.stderr)
         lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
-    except (FileNotFoundError, Exception):
+    except Exception:
+        if structured:
+            # Only the optional Python fallback uses Python's regex dialect.
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                return ToolOutcome.error(f"Error: invalid regex pattern: {exc}")
         lines = _fallback_grep(pattern, path, file_pattern, max_results)
 
     if file_pattern:

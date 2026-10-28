@@ -3,24 +3,30 @@ import os
 import glob
 import shutil
 
+from tiny_harness._tool_outcome import ToolOutcome
 
-def read_file(args: dict) -> str:
+
+def _failure(message: str, structured: bool) -> str | ToolOutcome:
+    return ToolOutcome.error(message) if structured else message
+
+
+def read_file(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     path = args["path"]
     offset = max(1, args.get("offset", 1))
     limit = args.get("limit")
     if limit is not None and limit <= 0:
-        return f"Error: limit must be positive, got {limit}."
+        return _failure(f"Error: limit must be positive, got {limit}.", structured)
     if not os.path.exists(path):
-        return f"Error: File '{path}' not found."
+        return _failure(f"Error: File '{path}' not found.", structured)
     if os.path.isdir(path):
-        return f"Error: '{path}' is a directory."
+        return _failure(f"Error: '{path}' is a directory.", structured)
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     total = len(lines)
     if total == 0:
         return f"[{path}] Lines 0-0 of 0 (empty)\n"
     if offset > total:
-        return f"Error: offset {offset} exceeds file length {total}."
+        return _failure(f"Error: offset {offset} exceeds file length {total}.", structured)
     selected = lines[offset - 1 : (offset - 1 + limit) if limit else None]
     result = "".join(selected)
     end = offset + len(selected) - 1
@@ -31,7 +37,7 @@ def read_file(args: dict) -> str:
     return output
 
 
-def write_file(args: dict) -> str:
+def write_file(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     path = args["path"]
     content = args["content"]
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -44,12 +50,12 @@ def write_file(args: dict) -> str:
     return f"{action} '{path}' ({lines} lines, {_format_size(size)})"
 
 
-def list_directory(args: dict) -> str:
+def list_directory(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     path = args.get("path", ".")
     pattern = args.get("pattern")
     recursive = args.get("recursive", False)
     if not os.path.isdir(path):
-        return f"Error: '{path}' is not a directory."
+        return _failure(f"Error: '{path}' is not a directory.", structured)
     entries = []
     if recursive:
         for root, dirs, files in os.walk(path):
@@ -67,15 +73,15 @@ def list_directory(args: dict) -> str:
     return f"[{path}] {len(entries)} items:\n" + "\n".join(entries)
 
 
-def find_files(args: dict) -> str:
+def find_files(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     pattern = args["pattern"]
     path = args.get("path", ".")
     max_results = args.get("max_results", 200)
     if max_results <= 0:
-        return "Error: max_results must be positive."
+        return _failure("Error: max_results must be positive.", structured)
     base = os.path.realpath(path)
     if os.path.isabs(pattern) or ".." in pattern.replace("\\", "/").split("/"):
-        return f"Error: pattern '{pattern}' escapes workspace."
+        return _failure(f"Error: pattern '{pattern}' escapes workspace.", structured)
     search_path = os.path.join(base, pattern)
     matches = []
     for match in glob.iglob(search_path, recursive=True):
@@ -92,17 +98,17 @@ def find_files(args: dict) -> str:
     return f"Found {len(matches)} files matching '{pattern}':\n" + "\n".join(f"  {m}" for m in matches)
 
 
-def delete_file(args: dict) -> str:
+def delete_file(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     path = args["path"]
     if not os.path.exists(path):
-        return f"Error: File '{path}' not found."
+        return _failure(f"Error: File '{path}' not found.", structured)
     if os.path.isdir(path):
-        return f"Error: '{path}' is a directory. Use a directory removal tool instead."
+        return _failure(f"Error: '{path}' is a directory. Use a directory removal tool instead.", structured)
     os.remove(path)
     return f"Deleted '{path}'."
 
 
-def create_directory(args: dict) -> str:
+def create_directory(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     path = args["path"]
     existed = os.path.isdir(path)
     os.makedirs(path, exist_ok=True)
@@ -110,11 +116,11 @@ def create_directory(args: dict) -> str:
     return f"{action} directory '{path}'."
 
 
-def move_file(args: dict) -> str:
+def move_file(args: dict, *, structured: bool = False) -> str | ToolOutcome:
     src = args["source"]
     dst = args["destination"]
     if not os.path.exists(src):
-        return f"Error: Source '{src}' not found."
+        return _failure(f"Error: Source '{src}' not found.", structured)
     os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
     shutil.move(src, dst)
     return f"Moved '{src}' -> '{dst}'."
