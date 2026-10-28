@@ -70,9 +70,10 @@ class FatalLLMError(Exception):
 
 
 class AnthropicProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str, retry_config: LLMRetryConfig | None = None, max_tokens: int = 16384):
+    def __init__(self, api_key: str, model: str, retry_config: LLMRetryConfig | None = None, max_tokens: int = 16384, base_url: str = "https://api.anthropic.com/v1"):
         self._api_key = api_key
         self._model = model
+        self._base_url = base_url.rstrip("/")
         self._retry_config = retry_config or LLMRetryConfig()
         self._max_tokens = max_tokens
 
@@ -176,7 +177,7 @@ class AnthropicProvider(LLMProvider):
             try:
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     resp = await client.post(
-                        "https://api.anthropic.com/v1/messages",
+                        f"{self._base_url}/messages",
                         json=body,
                         headers={"x-api-key": self._api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                     )
@@ -221,6 +222,8 @@ class AnthropicProvider(LLMProvider):
                 # The 'event:' and 'data:' lines are separate SSE fields.
                 # Parse only data payloads, which carry their own 'type'.
                 tool_blocks: dict[int, dict] = {}
+                saw_message_stop = False
+                stop_reason: str | None = None
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -272,10 +275,28 @@ class AnthropicProvider(LLMProvider):
                                 type="tool_call_end",
                                 tool_call=ToolCallRequest(id=block["id"], name=block["name"], arguments=args),
                             )
+                    elif event_type == "message_delta":
+                        stop_reason = data.get("delta", {}).get("stop_reason") or stop_reason
+                        if data.get("usage") is not None:
+                            yield LLMStreamChunk(
+                                type="usage", content=json.dumps(data["usage"]),
+                            )
+                        if stop_reason in ("max_tokens", "pause_turn"):
+                            # Tool blocks may already have been yielded, but
+                            # AgentLoop must never execute them on incomplete output.
+                            raise FatalLLMError(
+                                f"Anthropic stream stopped without completion: {stop_reason}"
+                            )
+                    elif event_type == "message_stop":
+                        saw_message_stop = True
                     elif event_type == "error":
                         raise FatalLLMError(f"Anthropic stream error: {data.get('error', {}).get('type', 'unknown')}")
                 if tool_blocks:
                     raise FatalLLMError("Anthropic stream ended with incomplete tool calls")
+                if not saw_message_stop:
+                    raise FatalLLMError("Anthropic stream ended without message_stop")
+                if stop_reason is not None:
+                    yield LLMStreamChunk(type="finish", content=stop_reason)
 
 
 class _ResponseAdapter:
