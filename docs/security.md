@@ -9,12 +9,13 @@ tiny-harness 是可执行工具的 Agent harness，**不是安全沙箱**。模�
 - HITL 默认审核 mutation/destructive/dangerous；destructive/dangerous 不可使用会话级永久批准。回调异常按拒绝处理。
 - `ToolDef` 未声明风险时默认 mutation；未知 risk_level 在注册阶段拒绝；safe 风险等级仍执行文件路径守卫。
 - `--no-hitl` 下内置 Shell 工具默认不可执行；使用 `--no-hitl --allow-unsafe-shell` 才能显式启用（不等于沙箱）。
+- 可选 `shell_sandbox="bubblewrap"` 为 Linux 内置 async Shell 提供 mount/network/PID namespace 约束，启动失败不自动降级；`prlimit` CPU/AS/FSIZE 限制是逐进程限制，非 cgroup 总配额。参见 [SHELL_SANDBOX.md](SHELL_SANDBOX.md)。
 - built-in Shell skill 的 async handler 运行于指定 cwd；POSIX 上超时/取消时终止进程组；不继承 `*_API_KEY` 等未在 allow-list 的环境变量。
 - 会话快照使用原子替换与受限文件权限（POSIX `0600`）。
 
 ## 未提供的隔离能力
 
-- **Shell 没有操作系统级文件系统隔离**：即使 cwd 在 workspace，命令仍可能访问机器上任何该进程有权限访问的路径；显式设置 `--no-hitl --allow-unsafe-shell` 后，模型可以无需审批执行 Shell。
+- **默认 `shell_sandbox=off` 时 Shell 没有操作系统级文件系统隔离**：即使 cwd 在 workspace，命令仍可能访问机器上该进程有权限访问的路径。开启 bubblewrap 只是选配 Linux namespace 隔离，尚未在所有目标环境做端到端验证。
 - Shell 可能访问网络、用户凭据文件、Git 配置及 SSH agent；环境变量白名单不能覆盖全部隐式凭据路径。
 - 历史同步 `run_command` 辅助函数保留用于兼容，并未获得与 registered async Shell 等价的进程组取消保障。
 - Path guard 的检查和 handler 的实际打开文件不是一个不可分割的 OS 操作；工作区内容可被外部进程并发替换时仍有 TOCTOU 风险。
