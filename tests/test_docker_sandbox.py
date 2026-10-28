@@ -131,6 +131,8 @@ async def test_real_docker_cgroup_network_and_workspace_boundary(tmp_path):
     """Actually execute the container when CI supplies a pulled immutable image."""
     image = os.environ.get("TINY_HARNESS_TEST_DOCKER_IMAGE")
     if not image:
+        if os.environ.get("TINY_HARNESS_REQUIRE_DOCKER_INTEGRATION") == "1":
+            pytest.fail("Required Docker integration image was not configured")
         pytest.skip("Docker integration requires TINY_HARNESS_TEST_DOCKER_IMAGE")
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -166,6 +168,8 @@ async def test_real_docker_timeout_removes_daemon_container(tmp_path, monkeypatc
     """A timed-out Docker CLI must not orphan its daemon-owned container."""
     image = os.environ.get("TINY_HARNESS_TEST_DOCKER_IMAGE")
     if not image:
+        if os.environ.get("TINY_HARNESS_REQUIRE_DOCKER_INTEGRATION") == "1":
+            pytest.fail("Required Docker integration image was not configured")
         pytest.skip("Docker integration requires TINY_HARNESS_TEST_DOCKER_IMAGE")
     import secrets
     import subprocess
@@ -195,6 +199,8 @@ async def test_real_docker_cancel_removes_daemon_container(tmp_path, monkeypatch
     """Client-side task cancellation must also force container teardown."""
     image = os.environ.get("TINY_HARNESS_TEST_DOCKER_IMAGE")
     if not image:
+        if os.environ.get("TINY_HARNESS_REQUIRE_DOCKER_INTEGRATION") == "1":
+            pytest.fail("Required Docker integration image was not configured")
         pytest.skip("Docker integration requires TINY_HARNESS_TEST_DOCKER_IMAGE")
     import asyncio
     import secrets
