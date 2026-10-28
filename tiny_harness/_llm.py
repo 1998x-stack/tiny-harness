@@ -211,7 +211,7 @@ class AnthropicProvider(LLMProvider):
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream(
-                "POST", "https://api.anthropic.com/v1/messages",
+                "POST", f"{self._base_url}/messages",
                 json=body,
                 headers={"x-api-key": self._api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
             ) as response:
