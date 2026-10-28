@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from tiny_harness._events import StreamEvent
+from tiny_harness._tool_outcome import ToolOutcome
 
 if TYPE_CHECKING:
     from tiny_harness._guard import FilesystemGuard
@@ -183,6 +184,9 @@ class ToolExecutor:
         except Exception as e:
             return ToolResult.error(call_id, f"Tool '{name}' failed: {e}")
 
+        if isinstance(raw, ToolOutcome):
+            content = self._format(raw.content)
+            return ToolResult.ok(call_id, content) if raw.success else ToolResult.error(call_id, content)
         return ToolResult.ok(call_id, self._format(raw))
 
     def _format(self, raw) -> str:
