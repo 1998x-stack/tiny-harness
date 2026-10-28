@@ -22,7 +22,11 @@ class Agent:
     def __init__(self, prompt: Prompt, config: AgentConfig, store: SessionStore | None = None):
         self._config = config
         self._prompt = prompt
-        self._messages = MessageManager(prompt)
+        if config.context_window <= config.max_tokens:
+            raise ValueError("context_window must exceed max_tokens (reserved output budget)")
+        self._messages = MessageManager(
+            prompt, max_input_tokens=config.context_window - config.max_tokens,
+        )
         self._llm_provider = self._create_provider(config)
         self._tool_registry = ToolRegistry()
         self._guard = FilesystemGuard(config.workspace)
