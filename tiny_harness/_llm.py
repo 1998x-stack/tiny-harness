@@ -380,47 +380,75 @@ class OpenAIProvider(LLMProvider):
                     raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
 
                 tool_buffers: dict[int, dict] = {}
+                finished = False
 
                 async for line in response.aiter_lines():
                     line = line.strip()
-                    if not line or not line.startswith("data: "):
+                    if not line.startswith("data: "):
                         continue
                     data_str = line[6:]
                     if data_str == "[DONE]":
                         break
                     try:
                         data = json.loads(data_str)
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as exc:
+                        raise FatalLLMError("Invalid SSE JSON response") from exc
+
+                    # OpenAI usage-only stream chunk has choices: [].
+                    choices = data.get("choices") or []
+                    if not choices:
+                        if data.get("usage") is not None:
+                            yield LLMStreamChunk(type="usage", content=json.dumps(data["usage"]))
                         continue
 
-                    delta = data.get("choices", [{}])[0].get("delta", {})
+                    choice = choices[0]
+                    delta = choice.get("delta") or {}
                     if delta.get("content"):
                         yield LLMStreamChunk(type="text_delta", content=delta["content"])
 
-                    if delta.get("tool_calls"):
-                        for tc in delta["tool_calls"]:
-                            idx = tc.get("index", 0)
-                            if idx not in tool_buffers:
-                                tool_buffers[idx] = {"id": "", "name": "", "arguments": ""}
+                    for tc in delta.get("tool_calls") or []:
+                        idx = tc.get("index", 0)
+                        if idx not in tool_buffers:
+                            tool_buffers[idx] = {"id": "", "name": "", "arguments": ""}
+                        buf = tool_buffers[idx]
+                        if tc.get("id"):
+                            buf["id"] = tc["id"]
+                        func = tc.get("function") or {}
+                        if func.get("name"):
+                            buf["name"] += func["name"]
+                            yield LLMStreamChunk(
+                                type="tool_call_start",
+                                content=json.dumps({"id": buf["id"], "name": buf["name"]}),
+                            )
+                        if func.get("arguments") is not None:
+                            buf["arguments"] += func["arguments"]
 
-                            buf = tool_buffers[idx]
-                            if "id" in tc and tc["id"]:
-                                buf["id"] = tc["id"]
-                            func = tc.get("function", {})
-                            if "name" in func and func["name"]:
-                                buf["name"] = func["name"]
-                                yield LLMStreamChunk(type="tool_call_start", content=json.dumps({"id": buf["id"], "name": buf["name"]}))
-                            if "arguments" in func:
-                                buf["arguments"] += func["arguments"]
-
-                    finish = data.get("choices", [{}])[0].get("finish_reason")
-                    if finish in ("tool_calls", "stop"):
-                        for idx in sorted(tool_buffers.keys()):
-                            buf = tool_buffers[idx]
-                            if buf["name"] and buf["arguments"]:
+                    finish = choice.get("finish_reason")
+                    if finish is not None:
+                        finished = True
+                        if finish in ("length", "content_filter"):
+                            # Partial tool JSON or a truncated answer is not a final result.
+                            raise FatalLLMError(f"Stream ended without a complete answer: {finish}")
+                        if finish in ("tool_calls", "stop"):
+                            for idx in sorted(tool_buffers):
+                                buf = tool_buffers[idx]
+                                if not buf["name"]:
+                                    raise FatalLLMError("Streamed tool call has no function name")
                                 try:
-                                    args = json.loads(buf["arguments"])
-                                except json.JSONDecodeError:
-                                    args = {}
-                                tc = ToolCallRequest(id=buf["id"] or f"call_{idx}", name=buf["name"], arguments=args)
-                                yield LLMStreamChunk(type="tool_call_end", tool_call=tc)
+                                    arguments = json.loads(buf["arguments"]) if buf["arguments"].strip() else {}
+                                except json.JSONDecodeError as exc:
+                                    raise FatalLLMError(f"Invalid streamed tool arguments: {exc}") from exc
+                                if not isinstance(arguments, dict):
+                                    raise FatalLLMError("Streamed tool arguments must be a JSON object")
+                                yield LLMStreamChunk(
+                                    type="tool_call_end",
+                                    tool_call=ToolCallRequest(
+                                        id=buf["id"] or f"call_{idx}",
+                                        name=buf["name"],
+                                        arguments=arguments,
+                                    ),
+                                )
+                            tool_buffers.clear()
+                        yield LLMStreamChunk(type="finish", content=finish)
+                if tool_buffers or not finished:
+                    raise FatalLLMError("Stream ended before a complete finish reason")
