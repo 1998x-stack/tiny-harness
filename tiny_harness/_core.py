@@ -2,6 +2,7 @@
 import importlib.util
 import asyncio
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 from collections.abc import AsyncIterator
@@ -288,6 +289,12 @@ class Agent:
             else:
                 index += 1
 
+        previous = self._store.load_session(self._session_id)
+        for offset, record in enumerate(records):
+            if offset < len(previous) and previous[offset].get("timestamp"):
+                record["timestamp"] = previous[offset]["timestamp"]
+            else:
+                record["timestamp"] = datetime.now(timezone.utc).isoformat()
         self._store.replace_turns(self._session_id, records)
         self._chat_id = len(records)
         return self._chat_id
