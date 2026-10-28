@@ -21,10 +21,19 @@ class ToolDef:
     description: str
     parameters: dict
     risk_level: str = "mutation"
+    # Filesystem locations in the schema, independent of a tool's Python name.
+    # All fields listed here are canonicalized before the handler is invoked.
+    path_args: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.risk_level not in ("safe", "read_only", "mutation", "destructive", "dangerous"):
             raise ValueError(f"Unknown tool risk_level: {self.risk_level!r}")
+        if not isinstance(self.path_args, tuple) or len(set(self.path_args)) != len(self.path_args):
+            raise ValueError("path_args must be a tuple of distinct schema property names")
+        props = self.parameters.get("properties", {})
+        for field in self.path_args:
+            if not isinstance(field, str) or not field or props.get(field, {}).get("type") != "string":
+                raise ValueError(f"path_args entry {field!r} must be a declared string property")
 
 
 @dataclass
@@ -63,8 +72,11 @@ class ToolRegistry:
     def register_from_def(self, def_: ToolDef, handler: Callable) -> None:
         self.register(Tool(definition=def_, handler=handler))
 
-    def register_tool(self, name: str, description: str, parameters: dict, handler: Callable, risk_level: str = "mutation") -> None:
-        self.register_from_def(ToolDef(name=name, description=description, parameters=parameters, risk_level=risk_level), handler)
+    def register_tool(self, name: str, description: str, parameters: dict, handler: Callable, risk_level: str = "mutation", path_args: tuple[str, ...] = ()) -> None:
+        self.register_from_def(ToolDef(
+            name=name, description=description, parameters=parameters,
+            risk_level=risk_level, path_args=path_args,
+        ), handler)
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
@@ -76,13 +88,22 @@ class ToolRegistry:
         return list(self._tools.keys())
 
 
-# Built-in filesystem tools have explicit path contracts. A plugin that uses
-# other argument names must implement its own filesystem confinement.
-_FILE_TOOLS = frozenset({
-    "read_file", "write_file", "list_directory", "find_files",
-    "delete_file", "create_directory", "move_file", "search_content",
-})
-
+# Compatibility for third-party tools registered before path_args existed.
+# New tools should declare ToolDef(path_args=("filename", ...)).
+_LEGACY_FILE_PATH_KEYS = {
+    "read_file": ("path",),
+    "write_file": ("path",),
+    "list_directory": ("path",),
+    "find_files": ("path",),
+    "delete_file": ("path",),
+    "create_directory": ("path",),
+    "move_file": ("source", "destination"),
+    "search_content": ("path",),
+}
+_DEFAULT_WORKSPACE_PATH_TOOLS = frozenset((
+    "list_directory", "find_files", "search_content", "run_command",
+))
+_CONVENTIONAL_PATH_KEYS = ("path", "source", "destination", "cwd")
 
 class ToolExecutor:
     def __init__(self, registry: ToolRegistry, guard: "FilesystemGuard", timeout_ms: int = 30_000, max_output_chars: int = 50_000, approval_gate: "ApprovalGate | None" = None, event_bus: "EventBus | None" = None, allow_unsafe_shell: bool = False):
@@ -97,33 +118,38 @@ class ToolExecutor:
     def get_definitions(self) -> list[dict]:
         return self._registry.get_definitions()
 
-    def _guard_args(self, name: str, args: dict, risk_level: str) -> dict:
+    def _guard_args(self, tool: Tool, args: dict) -> dict:
         if not self._guard:
-            return args
+            return dict(args)
+        name = tool.definition.name
         checked = dict(args)
+
+        # Legacy conventional fields are checked for compatibility. A ToolDef
+        # may additionally declare arbitrary path fields such as "filename".
+        # Resolve EVERY field, not just the first nonempty one.
+        fields = set(tool.definition.path_args)
+        fields.update(_LEGACY_FILE_PATH_KEYS.get(name, ()))
+        fields.update(k for k in _CONVENTIONAL_PATH_KEYS if k in checked)
         if name == "run_command":
-            # The executor owns the workspace contract. Never let subprocess
-            # inherit an unrelated process working directory.
-            checked["cwd"] = self._guard.guard(checked.get("cwd") or ".", risk_level)
-        elif name in _FILE_TOOLS:
-            keys = ("source", "destination") if name == "move_file" else ("path",)
-            for key in keys:
-                if key in checked:
-                    checked[key] = self._guard.guard(checked[key], risk_level)
-            if name in ("list_directory", "find_files", "search_content") and "path" not in checked:
-                checked["path"] = self._guard.guard(".", risk_level)
-            if name == "find_files":
-                # Glob patterns require separate validation from plain paths.
-                import os
-                pattern = checked.get("pattern", "")
-                if os.path.isabs(pattern) or ".." in pattern.replace("\\", "/").split("/"):
-                    raise ValueError("Glob pattern must remain within the workspace")
-        else:
-            # Legacy protection for third-party tools with a conventional
-            # path argument; this does NOT sandbox arbitrary shell commands.
-            path = checked.get("path") or checked.get("source") or checked.get("destination") or checked.get("cwd")
-            if path:
-                self._guard.guard(path, risk_level)
+            fields.add("cwd")
+
+        for field in fields:
+            if field in checked:
+                value = checked[field]
+                if not isinstance(value, str):
+                    raise ValueError(f"Filesystem path {field!r} must be a string")
+                checked[field] = self._guard.guard(value, tool.definition.risk_level)
+            elif field == "cwd" and name == "run_command":
+                checked["cwd"] = self._guard.guard(".", tool.definition.risk_level)
+            elif field == "path" and name in _DEFAULT_WORKSPACE_PATH_TOOLS:
+                checked["path"] = self._guard.guard(".", tool.definition.risk_level)
+
+        if name == "find_files":
+            # Glob patterns need validation beyond ordinary path arguments.
+            import os
+            pattern = checked.get("pattern", "")
+            if os.path.isabs(pattern) or ".." in pattern.replace("\\", "/").split("/"):
+                raise ValueError("Glob pattern must remain within the workspace")
         return checked
 
     async def execute(self, name: str, args: dict, call_id: str) -> ToolResult:
@@ -147,7 +173,7 @@ class ToolExecutor:
             return ToolResult.error(call_id, f"Invalid arguments for '{name}':\n" + "\n".join(f"  - {e}" for e in errors))
 
         try:
-            self._guard_args(name, args, tool.definition.risk_level)
+            self._guard_args(tool, args)
         except Exception as e:
             return ToolResult.error(call_id, str(e))
 
@@ -168,7 +194,7 @@ class ToolExecutor:
         if errors:
             return ToolResult.error(call_id, f"Invalid approved arguments for '{name}':\n" + "\n".join(f"  - {e}" for e in errors))
         try:
-            args = self._guard_args(name, args, tool.definition.risk_level)
+            args = self._guard_args(tool, args)
         except Exception as e:
             return ToolResult.error(call_id, str(e))
 
