@@ -6,6 +6,9 @@ from difflib import get_close_matches
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema.exceptions import SchemaError
+
 from tiny_harness._events import StreamEvent
 from tiny_harness._tool_outcome import ToolOutcome
 
@@ -28,6 +31,15 @@ class ToolDef:
     def __post_init__(self) -> None:
         if self.risk_level not in ("safe", "read_only", "mutation", "destructive", "dangerous"):
             raise ValueError(f"Unknown tool risk_level: {self.risk_level!r}")
+        if not isinstance(self.parameters, dict):
+            raise ValueError("Tool parameters must be a JSON Schema object")
+        try:
+            Draft202012Validator.check_schema(self.parameters)
+        except SchemaError as exc:
+            raise ValueError(f"Invalid tool parameter JSON Schema: {exc.message}") from exc
+        if self.parameters.get("type", "object") != "object":
+            raise ValueError("Tool parameter schema must describe an object")
+        _reject_external_refs(self.parameters)
         if not isinstance(self.path_args, tuple) or len(set(self.path_args)) != len(self.path_args):
             raise ValueError("path_args must be a tuple of distinct schema property names")
         props = self.parameters.get("properties", {})
@@ -229,37 +241,42 @@ class ToolExecutor:
         return result
 
 
+def _reject_external_refs(value) -> None:
+    """Tool descriptions must not initiate network retrieval during validation."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in ("$ref", "$dynamicRef") and isinstance(item, str) and not item.startswith("#"):
+                raise ValueError("External JSON Schema references are not supported")
+            _reject_external_refs(item)
+    elif isinstance(value, list):
+        for item in value:
+            _reject_external_refs(item)
+
+
 def validate_schema(schema: dict, args: dict) -> list[str]:
-    errors = []
-    schema_type = schema.get("type")
-    if schema_type != "object":
-        return errors
+    """Validate tool arguments against JSON Schema Draft 2020-12.
+
+    Tool calls must always be objects, even for an empty legacy schema. All
+    nested/array/combination constraints are enforced before HITL and again
+    after approval-time argument modification.
+    """
     if not isinstance(args, dict):
         return [f"arguments should be an object, got {type(args).__name__}"]
-    properties = schema.get("properties", {})
-    required = schema.get("required", [])
-    for field in required:
-        if field not in args:
-            errors.append(f"'{field}' is required but was not provided")
-    if schema.get("additionalProperties") is False:
-        for key in args.keys() - properties.keys():
-            errors.append(f"'{key}' is not an allowed argument")
-    for key, value in args.items():
-        if key in properties:
-            prop = properties[key]
-            expected_type = prop.get("type")
-            if expected_type == "string" and not isinstance(value, str):
-                errors.append(f"'{key}' should be a string, got {type(value).__name__}")
-            elif expected_type == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
-                errors.append(f"'{key}' should be an integer, got {type(value).__name__}")
-            elif expected_type == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
-                errors.append(f"'{key}' should be a number, got {type(value).__name__}")
-            elif expected_type == "boolean" and not isinstance(value, bool):
-                errors.append(f"'{key}' should be a boolean, got {type(value).__name__}")
-            elif expected_type == "array" and not isinstance(value, list):
-                errors.append(f"'{key}' should be an array, got {type(value).__name__}")
-            elif expected_type == "object" and not isinstance(value, dict):
-                errors.append(f"'{key}' should be an object, got {type(value).__name__}")
-            if "enum" in prop and value not in prop["enum"]:
-                errors.append(f"'{key}' must be one of {prop['enum']}, got {value!r}")
-    return errors
+    if not isinstance(schema, dict) or schema.get("type", "object") != "object":
+        return ["Tool parameter schema must describe an object"]
+    try:
+        _reject_external_refs(schema)
+        validator = Draft202012Validator(
+            {"type": "object", **schema},
+            format_checker=FormatChecker(),
+        )
+        failures = list(validator.iter_errors(args))
+    except Exception as exc:
+        return [f"Invalid tool schema or reference: {exc}"]
+    failures.sort(key=lambda e: ("/".join(map(str, e.absolute_path)), e.message))
+    messages = []
+    for err in failures:
+        path = ".".join(str(k) for k in err.absolute_path)
+        where = f"'{path}' " if path else ""
+        messages.append(where + err.message)
+    return messages
