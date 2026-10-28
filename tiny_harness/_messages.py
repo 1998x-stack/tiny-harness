@@ -27,8 +27,13 @@ class TokenBudget:
 
 class MessageManager:
     def __init__(self, prompt: Prompt):
+        # Keep the Prompt, not just a snapshot: skills can be loaded later.
+        self._prompt = prompt
         self.messages: list[dict] = [{"role": "system", "content": prompt.to_string()}]
         self._token_budget = TokenBudget()
+
+    def _sync_system_prompt(self) -> None:
+        self.messages[0]["content"] = self._prompt.to_string()
 
     def add_user(self, content: str) -> None:
         self.messages.append({"role": "user", "content": content})
@@ -53,14 +58,16 @@ class MessageManager:
         self.messages.append({"role": "user", "content": f"[System Notice] {notice}"})
 
     def to_list(self) -> list[dict]:
+        self._sync_system_prompt()
         return self.messages
 
     def estimate_tokens(self) -> int:
+        self._sync_system_prompt()
         return sum(len(json.dumps(m)) // 4 for m in self.messages)
 
     def check_context(self) -> TokenStatus:
+        self._sync_system_prompt()
         return self._token_budget.check(self.messages)
 
     def clear(self) -> None:
-        system = self.messages[0]
-        self.messages = [system]
+        self.messages = [{"role": "system", "content": self._prompt.to_string()}]
