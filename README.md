@@ -313,7 +313,7 @@ ANTHROPIC_API_KEY="sk-ant-..." pytest tests/test_integration.py -v -m integratio
 
 The configured `context_window` reserves `max_tokens` for model output. When input history grows too large, the harness compacts oversized tool outputs and can discard complete older turns, preserving the latest user turn and tool-call/result pairing. This budget currently uses a heuristic estimate, not model-specific tokenizers.
 
-The built-in Shell skill requires human approval by default. In `--no-hitl` mode, Shell additionally requires `--allow-unsafe-shell`. The default `shell_sandbox=off` is **not** OS-isolated; Linux users may opt into `--shell-sandbox bubblewrap` for namespace-isolated execution with per-process resource limits. See [Linux Shell Sandbox](docs/SHELL_SANDBOX.md).
+The built-in Shell skill requires human approval by default. In `--no-hitl` mode, Shell additionally requires `--allow-unsafe-shell`. The default `shell_sandbox=off` is **not** OS-isolated. Linux can use [Bubblewrap](docs/SHELL_SANDBOX.md) with per-process limits, or opt into a [Docker OCI sandbox](docs/OCI_SANDBOX.md) with container-wide cgroup limits (validated in real GitHub CI).
 
 ## Optional Linux Shell Sandbox
 
@@ -322,6 +322,19 @@ tiny-harness --provider deepseek --skills files,shell --shell-sandbox bubblewrap
 ```
 
 Requires system-installed `bubblewrap` and `prlimit`, and working unprivileged namespaces. Sandboxed mode blocks external network by default; it never falls back to a host shell if setup fails. These per-process limits are **not** cgroup-wide quotas.
+
+## OCI Docker Sandbox (Linux)
+
+```bash
+docker pull alpine:3.20
+docker image inspect --format '{{index .RepoDigests 0}}' alpine:3.20
+tiny-harness --provider deepseek --skills files,shell \
+  --shell-sandbox docker \
+  --sandbox-image 'alpine@sha256:<your_64_hex_digest>' \
+  --sandbox-cpus 1.0 --sandbox-memory-mb 1024 --sandbox-pids-limit 64
+```
+
+Use the **actual** digest returned by `docker image inspect`; the displayed digest is only a placeholder. The Docker sandbox disables external networking, requires a pre-pulled image and uses a container read-only root with a writable workspace. A real OCI CI job verifies cgroup and filesystem/network isolation. Docker daemon privileges and third-party Python tools are still outside this boundary. See [OCI Sandbox details](docs/OCI_SANDBOX.md).
 
 ## Security
 
