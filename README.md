@@ -306,6 +306,12 @@ pytest tests/ --ignore=tests/test_integration.py
 ANTHROPIC_API_KEY="sk-ant-..." pytest tests/test_integration.py -v -m integration
 ```
 
+## Context budget and unattended execution
+
+The configured `context_window` reserves `max_tokens` for model output. When input history grows too large, the harness compacts oversized tool outputs and can discard complete older turns, preserving the latest user turn and tool-call/result pairing. This budget currently uses a heuristic estimate, not model-specific tokenizers.
+
+The built-in Shell skill requires human approval by default. In `--no-hitl` mode, explicit unsandboxed Shell access requires `--allow-unsafe-shell`; **this does not provide OS filesystem or network isolation**.
+
 ## Security
 
 The built-in Shell skill is **not** an OS sandbox. Read [security boundaries](docs/security.md) and the [phased optimization status](docs/OPTIMIZATION_STATUS.md) before deploying to untrusted environments.
