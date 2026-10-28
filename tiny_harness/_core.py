@@ -22,7 +22,7 @@ class Agent:
     def __init__(self, prompt: Prompt, config: AgentConfig, store: SessionStore | None = None):
         self._config = config
         self._prompt = prompt
-        if config.shell_sandbox not in ("off", "bubblewrap"):
+        if config.shell_sandbox not in ("off", "bubblewrap", "docker"):
             raise ValueError(f"Invalid shell_sandbox: {config.shell_sandbox!r}")
         if config.context_window <= config.max_tokens:
             raise ValueError("context_window must exceed max_tokens (reserved output budget)")

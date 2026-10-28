@@ -99,6 +99,9 @@ def register(agent) -> None:
             sandbox_cpu_seconds=agent._config.sandbox_cpu_seconds,
             sandbox_memory_mb=agent._config.sandbox_memory_mb,
             sandbox_file_mb=agent._config.sandbox_file_mb,
+            sandbox_image=agent._config.sandbox_image,
+            sandbox_cpus=agent._config.sandbox_cpus,
+            sandbox_pids_limit=agent._config.sandbox_pids_limit,
         ),
     )
     agent._prompt.append(SHELL_PROMPT)

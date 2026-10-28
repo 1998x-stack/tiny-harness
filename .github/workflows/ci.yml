@@ -42,3 +42,25 @@ jobs:
       - name: Check actual kernel namespace support and run isolation tests
         run: |
           python -m pytest -q tests/test_shell_bwrap.py tests/test_sandbox_resource_limits.py -rs
+
+  oci-sandbox-smoke:
+    name: Real OCI cgroup and network isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tests
+        run: python -m pip install -e ".[dev]"
+      - name: Confirm daemon and pull explicit integration image
+        run: |
+          docker info
+          docker pull alpine:3.20
+          IMAGE="$(docker image inspect --format '{{index .RepoDigests 0}}' alpine:3.20)"
+          case "$IMAGE" in *@sha256:*) ;; *) echo 'Immutable image digest unavailable' >&2; exit 1 ;; esac
+          echo "TINY_HARNESS_TEST_DOCKER_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Execute real OCI boundary and cgroup tests (no skips)
+        run: |
+          python -m pytest -q tests/test_docker_sandbox.py -rs
+          python -m pytest -q tests/test_docker_sandbox.py::test_real_docker_cgroup_network_and_workspace_boundary -rs
