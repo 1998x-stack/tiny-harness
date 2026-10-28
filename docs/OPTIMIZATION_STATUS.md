@@ -28,12 +28,13 @@
 | Phase 4 | [#22](https://github.com/1998x-stack/tiny-harness/pull/22) | Draft 2020-12 JSON Schema（嵌套/组合/数组），注册时检查 Schema，拒绝远程引用 | PR CI 通过；引入 jsonschema 运行时依赖 |
 | Phase 5 | [#24](https://github.com/1998x-stack/tiny-harness/pull/24) | Linux Bubblewrap 可选 shell namespace + workspace-only bind, 缺失时 fail-closed | Python CI 通过，实际 namespace smoke 最初被跳过 |
 | Phase 5 | [#25](https://github.com/1998x-stack/tiny-harness/pull/25) | prlimit CPU/虚拟内存/单文件大小逐进程资源约束 | Python CI 通过，非 cgroup 总配额 |
+| Phase 6 | [#27](https://github.com/1998x-stack/tiny-harness/pull/27) | OCI/Docker 可选后端，固定镜像摘要、只读根、network=none、cgroup CPU/内存/PID 限制及容器回收 | GitHub Runner 实际 Docker 隔离、cgroup、超时/取消清理测试通过 |
 
 ## 待完成事项（不应标记为已修复）
 
 ### P1：继续按独立 PR 完成
 
-1. **OS 沙箱验证及增强**：已实现可选 Linux Bubblewrap namespace 和 prlimit；尚需真实机器上的隔离测试、cgroup 总资源配额、系统级加固和 Windows/macOS 后端。默认 off 仍是不隔离的 Shell，**禁止**把 opt-in Bubblewrap 描述为完整生产沙箱。
+1. **OS 沙箱验证及增强**：已实现可选 Linux Bubblewrap 与 OCI Docker 后端；Docker 的 cgroup 限制及实际网络/工作区隔离已在 GitHub Linux runner 通过。仍需独立宿主环境的恶意负载评估、seccomp/AppArmor/SELinux 强化、daemon 隔离、竞态修复和其他平台后端。默认 off 仍是不隔离的 Shell，**不能**据 CI 单环境验证声称完整生产级沙箱。
 2. **ToolDef 参数级策略**：基础风险枚举与 no-HITL Shell 显式 opt-in 已完成；后续引入细粒度 allow/ask/deny、按命令参数审批策略，扩展其他危险工具的无 HITL 拒绝边界。
 3. **Provider 全面契约**：Anthropic 自定义 endpoint、截断判断和首次输出前的有限流式重试已完成；仍需统一非流式/流式重试、DeepSeek thinking 透传、HTTP 客户端连接复用及真实 API 冒烟。
 4. **上下文窗口**：已提供可配置窗口与启发式压缩；仍需 provider 真实 usage 回收、tokenizer 精确统计、可审计摘要和更精细的窗口分层治理。
