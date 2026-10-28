@@ -21,6 +21,9 @@ class AgentConfig:
     no_hitl: bool = False
     allow_unsafe_shell: bool = False
     shell_sandbox: str = "off"  # 'off' or 'bubblewrap' (Linux only)
+    sandbox_cpu_seconds: int = 30
+    sandbox_memory_mb: int = 1024
+    sandbox_file_mb: int = 32
 
 
 class Prompt:
