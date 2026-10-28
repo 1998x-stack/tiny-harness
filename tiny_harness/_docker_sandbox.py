@@ -51,6 +51,8 @@ def build_docker_argv(
         raise SandboxUnavailable("Sandbox workspace must be an existing directory")
 
     root = os.path.realpath(workspace)
+    if root in ("/", "/etc", "/home", "/root", "/proc", "/sys", "/dev", "/run"):
+        raise SandboxUnavailable("Refusing to expose a system root as Docker workspace")
     working_dir = os.path.realpath(cwd or root)
     if os.path.commonpath((root, working_dir)) != root:
         raise SandboxUnavailable("Sandbox cwd is outside workspace")
