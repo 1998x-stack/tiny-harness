@@ -126,11 +126,16 @@ async def _cli_approval_handler(request: ToolApprovalRequest) -> ApprovalDecisio
         if len(val) > 80:
             val = val[:77] + "..."
         print(f"     {k}: {val}")
+    session_allowed = request.risk_level not in ("destructive", "dangerous")
     while True:
-        resp = (await _async_input("  [y=yes / n=no / s=yes for session / m=modify]: ")).strip().lower()
+        prompt = "  [y=yes / n=no / s=yes for session / m=modify]: " if session_allowed else "  [y=yes / n=no / m=modify]: "
+        resp = (await _async_input(prompt)).strip().lower()
         if resp == "y":
             return ApprovalDecision(approved=True)
         if resp == "s":
+            if not session_allowed:
+                print("  Session approval is unavailable for high-risk tools.")
+                continue
             return ApprovalDecision(approved=True, session_approved=True)
         if resp == "n" or resp == "":
             return ApprovalDecision(approved=False, reason="User denied")
