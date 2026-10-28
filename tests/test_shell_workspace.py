@@ -26,7 +26,7 @@ async def test_shell_cwd_defaults_to_configured_workspace(tmp_path, monkeypatch)
         ),
         run_command,
     )
-    executor = ToolExecutor(registry, FilesystemGuard(str(workspace)))
+    executor = ToolExecutor(registry, FilesystemGuard(str(workspace)), allow_unsafe_shell=True)
     for args in ({"command": "pwd"}, {"command": "pwd", "cwd": "."}):
         result = await executor.execute("run_command", args, "shell-1")
         assert result.success
