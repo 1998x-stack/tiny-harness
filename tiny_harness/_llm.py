@@ -77,7 +77,50 @@ class AnthropicProvider(LLMProvider):
         self._max_tokens = max_tokens
 
     def _convert_messages(self, messages: list[dict]) -> list[dict]:
-        return [m for m in messages if m["role"] != "system"]
+        """Translate the harness' OpenAI-style transcript to Anthropic blocks."""
+        wire: list[dict] = []
+        for msg in messages:
+            role = msg["role"]
+            if role == "system":
+                continue
+            if role == "tool":
+                block = {
+                    "type": "tool_result",
+                    "tool_use_id": msg["tool_call_id"],
+                    "content": str(msg.get("content") or ""),
+                }
+                # Multiple tool results from one assistant turn share a user message.
+                if (wire and wire[-1]["role"] == "user"
+                        and isinstance(wire[-1]["content"], list)
+                        and all(x.get("type") == "tool_result" for x in wire[-1]["content"])):
+                    wire[-1]["content"].append(block)
+                else:
+                    wire.append({"role": "user", "content": [block]})
+                continue
+            if role == "assistant":
+                tool_calls = msg.get("tool_calls") or []
+                if not tool_calls:
+                    wire.append({"role": "assistant", "content": msg.get("content") or ""})
+                    continue
+                blocks: list[dict] = []
+                if msg.get("content"):
+                    blocks.append({"type": "text", "text": msg["content"]})
+                for tc in tool_calls:
+                    function = tc["function"]
+                    arguments = function.get("arguments") or "{}"
+                    if isinstance(arguments, str):
+                        arguments = json.loads(arguments)
+                    blocks.append({
+                        "type": "tool_use",
+                        "id": tc["id"],
+                        "name": function["name"],
+                        "input": arguments,
+                    })
+                wire.append({"role": "assistant", "content": blocks})
+                continue
+            if role == "user":
+                wire.append({"role": "user", "content": msg.get("content") or ""})
+        return wire
 
     def _extract_system(self, messages: list[dict]) -> str:
         for m in messages:
@@ -174,25 +217,65 @@ class AnthropicProvider(LLMProvider):
                 if response.status_code != 200:
                     body_bytes = await response.aread()
                     raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
+
+                # The 'event:' and 'data:' lines are separate SSE fields.
+                # Parse only data payloads, which carry their own 'type'.
+                tool_blocks: dict[int, dict] = {}
                 async for line in response.aiter_lines():
-                    parsed = self._parse_sse_line(line)
-                    if parsed is None:
+                    if not line.startswith("data: "):
                         continue
-                    event_type, value = parsed
+                    data = json.loads(line[6:])
+                    event_type = data.get("type")
+
                     if event_type == "message_start":
-                        yield LLMStreamChunk(type="usage", content=json.dumps({"input": value.get("message", {}).get("usage", {}).get("input_tokens", 0)}))
+                        usage = data.get("message", {}).get("usage", {})
+                        yield LLMStreamChunk(type="usage", content=json.dumps({
+                            "input": usage.get("input_tokens", 0),
+                        }))
                     elif event_type == "content_block_start":
-                        block = value.get("content_block", {})
+                        block = data.get("content_block", {})
                         if block.get("type") == "tool_use":
-                            yield LLMStreamChunk(type="tool_call_start", content=json.dumps({"id": block["id"], "name": block["name"]}))
+                            index = data["index"]
+                            tool_blocks[index] = {
+                                "id": block["id"],
+                                "name": block["name"],
+                                "input": block.get("input", {}),
+                                "fragments": [],
+                            }
+                            yield LLMStreamChunk(
+                                type="tool_call_start",
+                                content=json.dumps({"id": block["id"], "name": block["name"]}),
+                            )
                     elif event_type == "content_block_delta":
-                        delta = value.get("delta", {})
+                        delta = data.get("delta", {})
                         if delta.get("type") == "text_delta":
                             yield LLMStreamChunk(type="text_delta", content=delta.get("text", ""))
                         elif delta.get("type") == "input_json_delta":
-                            yield LLMStreamChunk(type="tool_call_delta", content=delta.get("partial_json", ""))
+                            index = data["index"]
+                            if index not in tool_blocks:
+                                raise FatalLLMError("Received tool input fragment without tool_use start")
+                            fragment = delta.get("partial_json", "")
+                            tool_blocks[index]["fragments"].append(fragment)
+                            yield LLMStreamChunk(type="tool_call_delta", content=fragment)
                     elif event_type == "content_block_stop":
-                        yield LLMStreamChunk(type="tool_call_end")
+                        index = data["index"]
+                        if index in tool_blocks:
+                            block = tool_blocks.pop(index)
+                            raw = "".join(block["fragments"])
+                            try:
+                                args = json.loads(raw) if raw else block["input"]
+                            except json.JSONDecodeError as exc:
+                                raise FatalLLMError(f"Invalid streamed tool arguments: {exc}") from exc
+                            if not isinstance(args, dict):
+                                raise FatalLLMError("Streamed tool arguments must be a JSON object")
+                            yield LLMStreamChunk(
+                                type="tool_call_end",
+                                tool_call=ToolCallRequest(id=block["id"], name=block["name"], arguments=args),
+                            )
+                    elif event_type == "error":
+                        raise FatalLLMError(f"Anthropic stream error: {data.get('error', {}).get('type', 'unknown')}")
+                if tool_blocks:
+                    raise FatalLLMError("Anthropic stream ended with incomplete tool calls")
 
 
 class _ResponseAdapter:
