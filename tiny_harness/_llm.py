@@ -62,11 +62,68 @@ class LLMRetryConfig:
 
 
 class RetryableLLMError(Exception):
-    pass
+    def __init__(self, message: str, retry_after: float | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class FatalLLMError(Exception):
     pass
+
+
+def _retry_after_seconds(value: str | None) -> float | None:
+    """Retry-After may be delta-seconds or an HTTP-date."""
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (ValueError, TypeError):
+        from datetime import datetime, timezone
+        from email.utils import parsedate_to_datetime
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+
+async def _safe_retry_stream(factory, config: LLMRetryConfig):
+    """Retry stream failures only before the first externally visible chunk.
+
+    Once any chunk has been yielded, the consumer may already have printed it
+    or collected tool-call state. Replaying would duplicate content or actions.
+    """
+    import httpx
+
+    retryable_transport = (
+        httpx.TimeoutException, httpx.ConnectError, httpx.ReadError,
+        httpx.RemoteProtocolError,
+    )
+    for attempt in range(config.max_retries + 1):
+        emitted = False
+        try:
+            async for chunk in factory():
+                emitted = True
+                yield chunk
+            return
+        except (RetryableLLMError, *retryable_transport) as exc:
+            if emitted:
+                raise FatalLLMError(
+                    f"Stream failed after output began; not retrying: {exc}"
+                ) from exc
+            if attempt >= config.max_retries:
+                raise FatalLLMError(f"Stream retries exhausted: {exc}") from exc
+            backoff = min(
+                config.base_delay * config.backoff_factor ** attempt,
+                config.max_delay,
+            )
+            if isinstance(exc, RetryableLLMError) and exc.retry_after is not None:
+                delay = min(exc.retry_after, config.max_delay)
+            else:
+                delay = backoff + random.uniform(0, backoff * 0.5)
+            await asyncio.sleep(delay)
 
 
 class AnthropicProvider(LLMProvider):
@@ -197,6 +254,12 @@ class AnthropicProvider(LLMProvider):
         raise FatalLLMError(f"All retries exhausted: {last_error}")
 
     async def generate_stream(self, messages, tools=None):
+        async for chunk in _safe_retry_stream(
+            lambda: self._generate_stream_once(messages, tools), self._retry_config,
+        ):
+            yield chunk
+
+    async def _generate_stream_once(self, messages, tools=None):
         import httpx
 
         system = self._extract_system(messages)
@@ -216,6 +279,11 @@ class AnthropicProvider(LLMProvider):
                 headers={"x-api-key": self._api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
             ) as response:
                 if response.status_code != 200:
+                    if response.status_code in (429, 529) or response.status_code >= 500:
+                        raise RetryableLLMError(
+                            f"Stream HTTP {response.status_code}",
+                            retry_after=_retry_after_seconds(response.headers.get("retry-after")),
+                        )
                     body_bytes = await response.aread()
                     raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
 
@@ -384,6 +452,12 @@ class OpenAIProvider(LLMProvider):
         raise FatalLLMError(f"All retries exhausted: {last_error}")
 
     async def generate_stream(self, messages, tools=None):
+        async for chunk in _safe_retry_stream(
+            lambda: self._generate_stream_once(messages, tools), self._retry_config,
+        ):
+            yield chunk
+
+    async def _generate_stream_once(self, messages, tools=None):
         import httpx
         body: dict = {"model": self._model, "messages": self._convert_messages(messages), "max_tokens": self._max_tokens, "stream": True}
         converted_tools = self._convert_tools(tools)
@@ -397,6 +471,11 @@ class OpenAIProvider(LLMProvider):
                 headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
             ) as response:
                 if response.status_code != 200:
+                    if response.status_code in (429, 529) or response.status_code >= 500:
+                        raise RetryableLLMError(
+                            f"Stream HTTP {response.status_code}",
+                            retry_after=_retry_after_seconds(response.headers.get("retry-after")),
+                        )
                     body_bytes = await response.aread()
                     raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
 
