@@ -45,7 +45,11 @@ class Agent:
             case "anthropic":
                 return AnthropicProvider(config.api_key, config.model, max_tokens=config.max_tokens)
             case "openai" | "deepseek":
-                base_url = config.api_base_url or "https://api.openai.com/v1"
+                defaults = {
+                    "openai": "https://api.openai.com/v1",
+                    "deepseek": "https://api.deepseek.com/v1",
+                }
+                base_url = config.api_base_url or defaults[config.provider]
                 return OpenAIProvider(config.api_key, config.model, base_url=base_url, max_tokens=config.max_tokens)
             case _:
                 raise ValueError(f"Unknown provider: {config.provider}")
