@@ -50,7 +50,7 @@ async def test_run_with_tools_snapshots_entire_history(tmp_path):
     agent.tools.register_from_def(
         ToolDef("echo", "echo", {"type": "object", "properties": {
             "message": {"type": "string"},
-        }, "required": ["message"]}),
+        }, "required": ["message"]}, risk_level="read_only"),
         lambda args: args["message"] + "-result",
     )
 
