@@ -122,29 +122,47 @@ class Agent:
             raise RuntimeError("Agent is already running a task")
         self._running = True
         self._save_turn("user", content=prompt)
-        queue: list[StreamEvent] = []
+        queue: asyncio.Queue[StreamEvent] = asyncio.Queue()
 
         async def collector(event: StreamEvent):
-            queue.append(event)
+            queue.put_nowait(event)
 
-        self._event_bus.subscribe(collector)
-        result_text = ""
+        unsubscribe = self._event_bus.subscribe(collector)
+        task: asyncio.Task[str] | None = None
         try:
             loop = AgentLoop(self._config, self._messages, self._llm_provider, self._tool_executor, self._event_bus)
             task = asyncio.create_task(loop.run(prompt))
-            last_yielded = 0
-            while not task.done() or last_yielded < len(queue):
-                while last_yielded < len(queue):
-                    event = queue[last_yielded]
-                    if event.type == "text_delta" and event.content:
-                        result_text += event.content
-                    yield event
-                    last_yielded += 1
-                if not task.done():
-                    await asyncio.sleep(0.01)
-            await task
-            self._save_turn("assistant", content=result_text if result_text else None)
+            while True:
+                if not queue.empty():
+                    yield queue.get_nowait()
+                    continue
+                if task.done():
+                    break
+
+                waiting = asyncio.create_task(queue.get())
+                try:
+                    done, _ = await asyncio.wait((waiting, task), return_when=asyncio.FIRST_COMPLETED)
+                    if waiting in done:
+                        yield waiting.result()
+                finally:
+                    if not waiting.done():
+                        waiting.cancel()
+                        try:
+                            await waiting
+                        except asyncio.CancelledError:
+                            pass
+
+            final_text = await task
+            # Match run(): store the final answer, not intermediate tool-turn text.
+            self._save_turn("assistant", content=final_text)
         finally:
+            unsubscribe()
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
             self._running = False
 
     def clear(self) -> None:

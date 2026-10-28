@@ -20,8 +20,16 @@ class EventBus:
     def __init__(self):
         self._handlers: list[Callable[[StreamEvent], Awaitable[Any]]] = []
 
-    def subscribe(self, handler: Callable[[StreamEvent], Awaitable[Any]]) -> None:
+    def subscribe(self, handler: Callable[[StreamEvent], Awaitable[Any]]) -> Callable[[], None]:
         self._handlers.append(handler)
+
+        def unsubscribe() -> None:
+            try:
+                self._handlers.remove(handler)
+            except ValueError:
+                pass
+
+        return unsubscribe
 
     async def emit(self, event: StreamEvent) -> None:
         for handler in tuple(self._handlers):
