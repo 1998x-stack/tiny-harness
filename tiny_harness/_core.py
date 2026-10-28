@@ -35,6 +35,7 @@ class Agent:
             self._tool_registry, self._guard, config.timeout_ms, config.max_tool_result_chars,
             approval_gate=self._approval_gate,
             event_bus=self._event_bus,
+            allow_unsafe_shell=config.allow_unsafe_shell,
         )
         self._loaded_skills: list[str] = []
         self._running = False
@@ -83,6 +84,12 @@ class Agent:
     def load_skill(self, skill_ref: str) -> None:
         if skill_ref in self._loaded_skills:
             return
+        if (self._config.no_hitl and not self._config.allow_unsafe_shell
+                and skill_ref in ("shell", "tiny_harness.skills.shell")):
+            raise ValueError(
+                "Shell skill without HITL requires allow_unsafe_shell=True. "
+                "Shell commands are not OS-sandboxed."
+            )
         module = self._resolve_skill(skill_ref)
         if not hasattr(module, "register"):
             raise RuntimeError(f"Skill '{skill_ref}' has no register() function")
