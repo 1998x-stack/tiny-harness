@@ -159,3 +159,64 @@ async def test_real_docker_cgroup_network_and_workspace_boundary(tmp_path):
     assert "/workspace" in result.content
     assert (workspace / "generated.txt").read_text() == "cgroup-ok"
     assert secret.read_text() == "hidden"
+
+
+@pytest.mark.asyncio
+async def test_real_docker_timeout_removes_daemon_container(tmp_path, monkeypatch):
+    """A timed-out Docker CLI must not orphan its daemon-owned container."""
+    image = os.environ.get("TINY_HARNESS_TEST_DOCKER_IMAGE")
+    if not image:
+        pytest.skip("Docker integration requires TINY_HARNESS_TEST_DOCKER_IMAGE")
+    import secrets
+    import subprocess
+
+    name = "tiny-harness-" + "d" * 24
+    monkeypatch.setattr(secrets, "token_hex", lambda count: "d" * 24)
+    agent = Agent(Prompt("fixture"), Config(
+        model="t", api_key="unused", workspace=str(tmp_path),
+        no_hitl=True, allow_unsafe_shell=True,
+        shell_sandbox="docker", sandbox_image=image,
+    ))
+    agent.load_skill("shell")
+    result = await agent._tool_executor.execute(
+        "run_command", {"command": "sleep 30", "timeout": 1}, "timeout-1",
+    )
+    assert not result.success
+    assert "timed out" in result.content.lower()
+    proc = subprocess.run(
+        ["docker", "ps", "-aq", "--filter", f"name=^{name}$"],
+        capture_output=True, text=True, check=True, timeout=5,
+    )
+    assert proc.stdout.strip() == "", "Sandbox container was not removed after timeout"
+
+
+@pytest.mark.asyncio
+async def test_real_docker_cancel_removes_daemon_container(tmp_path, monkeypatch):
+    """Client-side task cancellation must also force container teardown."""
+    image = os.environ.get("TINY_HARNESS_TEST_DOCKER_IMAGE")
+    if not image:
+        pytest.skip("Docker integration requires TINY_HARNESS_TEST_DOCKER_IMAGE")
+    import asyncio
+    import secrets
+    import subprocess
+
+    name = "tiny-harness-" + "e" * 24
+    monkeypatch.setattr(secrets, "token_hex", lambda count: "e" * 24)
+    agent = Agent(Prompt("fixture"), Config(
+        model="t", api_key="unused", workspace=str(tmp_path),
+        no_hitl=True, allow_unsafe_shell=True,
+        shell_sandbox="docker", sandbox_image=image,
+    ))
+    agent.load_skill("shell")
+    running = asyncio.create_task(agent._tool_executor.execute(
+        "run_command", {"command": "sleep 30", "timeout": 30}, "cancel-1",
+    ))
+    await asyncio.sleep(0.5)
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+    proc = subprocess.run(
+        ["docker", "ps", "-aq", "--filter", f"name=^{name}$"],
+        capture_output=True, text=True, check=True, timeout=5,
+    )
+    assert proc.stdout.strip() == "", "Sandbox container was not removed after cancellation"
