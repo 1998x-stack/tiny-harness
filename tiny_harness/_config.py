@@ -20,6 +20,7 @@ class AgentConfig:
     approval_timeout_ms: int = 120_000
     no_hitl: bool = False
     allow_unsafe_shell: bool = False
+    shell_sandbox: str = "off"  # 'off' or 'bubblewrap' (Linux only)
 
 
 class Prompt:
