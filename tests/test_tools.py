@@ -215,7 +215,8 @@ def test_validate_schema_valid():
 def test_validate_schema_non_object():
     schema = {"type": "array"}
     errors = validate_schema(schema, {})
-    assert len(errors) == 0
+    assert errors
+    assert "object" in errors[0]
 
 
 def test_validate_schema_array_type():
