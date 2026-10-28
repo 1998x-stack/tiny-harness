@@ -1,6 +1,8 @@
 # tiny_harness/_core.py
 import importlib.util
 import asyncio
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 from collections.abc import AsyncIterator
@@ -108,11 +110,10 @@ class Agent:
         if self._running:
             raise RuntimeError("Agent is already running a task")
         self._running = True
-        self._save_turn("user", content=prompt)
         try:
             loop = AgentLoop(self._config, self._messages, self._llm_provider, self._tool_executor, self._event_bus)
             result = await loop.run(prompt)
-            self._save_turn("assistant", content=result)
+            self._dump_conversation()
             return result
         finally:
             self._running = False
@@ -121,7 +122,6 @@ class Agent:
         if self._running:
             raise RuntimeError("Agent is already running a task")
         self._running = True
-        self._save_turn("user", content=prompt)
         queue: asyncio.Queue[StreamEvent] = asyncio.Queue()
 
         async def collector(event: StreamEvent):
@@ -154,7 +154,7 @@ class Agent:
 
             final_text = await task
             # Match run(): store the final answer, not intermediate tool-turn text.
-            self._save_turn("assistant", content=final_text)
+            self._dump_conversation()
         finally:
             unsubscribe()
             if task is not None and not task.done():
@@ -201,14 +201,22 @@ class Agent:
                 tc_list = None
                 if tool_calls:
                     from tiny_harness._llm import ToolCallRequest
-                    tc_list = [
-                        ToolCallRequest(id=tc.get("id", f"call_{i}"), name=tc["name"], arguments=tc.get("arguments", {}))
-                        for i, tc in enumerate(tool_calls)
-                    ]
+                    tc_list = []
+                    for i, tc in enumerate(tool_calls):
+                        arguments = tc.get("arguments", {})
+                        if isinstance(arguments, str):
+                            arguments = json.loads(arguments)
+                        tc_list.append(ToolCallRequest(
+                            id=tc.get("id") or f"call_{i}",
+                            name=tc["name"],
+                            arguments=arguments,
+                        ))
                 self._messages.add_assistant(text=content, tool_calls=tc_list)
                 if tool_results:
-                    for tr in tool_results:
-                        tr_id = tr.get("id", "")
+                    for index, tr in enumerate(tool_results):
+                        tr_id = tr.get("id") or tr.get("tool_call_id") or (
+                            tc_list[index].id if tc_list and index < len(tc_list) else ""
+                        )
                         tr_content = tr.get("content", "")
                         self._messages.add_tool_result(tr_id, tr_content)
         return len(records)
@@ -235,62 +243,61 @@ class Agent:
         if self._store is None or self._session_id is None:
             return 0
         messages = self._messages.to_list()
-        count = 0
-        i = 1
-
-        while i < len(messages):
-            msg = messages[i]
-            role = msg.get("role", "")
-
+        records: list[dict] = []
+        index = 1
+        while index < len(messages):
+            msg = messages[index]
+            role = msg.get("role")
+            record = {
+                "schema_version": 1,
+                "session_id": self._session_id,
+                "chat_id": len(records) + 1,
+                "role": role,
+                "model": self._config.model,
+            }
             if role == "user":
-                count += 1
-                self._store.save_turn(
-                    session_id=self._session_id,
-                    chat_id=count,
-                    role="user",
-                    content=msg.get("content", ""),
-                    model=self._config.model,
-                )
-                i += 1
-
+                record["content"] = msg.get("content", "")
+                records.append(record)
+                index += 1
             elif role == "assistant":
-                raw_tool_calls = msg.get("tool_calls")
-                tool_calls = None
-                if raw_tool_calls:
-                    tool_calls = [
-                        {"name": tc.get("function", {}).get("name", "?"), "arguments": tc.get("function", {}).get("arguments", {})}
-                        for tc in raw_tool_calls
+                if msg.get("content") is not None:
+                    record["content"] = msg["content"]
+                raw_calls = msg.get("tool_calls") or []
+                if raw_calls:
+                    record["tool_calls"] = [
+                        {
+                            "id": tc["id"],
+                            "name": tc["function"]["name"],
+                            "arguments": json.loads(tc["function"]["arguments"])
+                            if isinstance(tc["function"]["arguments"], str)
+                            else tc["function"]["arguments"],
+                        }
+                        for tc in raw_calls
                     ]
-                tool_results = []
-                j = i + 1
-                while j < len(messages) and messages[j].get("role") == "tool":
-                    tr = messages[j]
-                    tool_results.append({
-                        "id": tr.get("tool_call_id", ""),
-                        "content": tr.get("content", ""),
+                results = []
+                index += 1
+                while index < len(messages) and messages[index].get("role") == "tool":
+                    tool = messages[index]
+                    results.append({
+                        "id": tool["tool_call_id"],
+                        "content": tool.get("content", ""),
                     })
-                    j += 1
-
-                count += 1
-                self._store.save_turn(
-                    session_id=self._session_id,
-                    chat_id=count,
-                    role="assistant",
-                    content=msg.get("content"),
-                    tool_calls=tool_calls,
-                    tool_results=tool_results if tool_results else None,
-                    model=self._config.model,
-                )
-                i = j
-
-            elif role == "tool":
-                i += 1
-
+                    index += 1
+                if results:
+                    record["tool_results"] = results
+                records.append(record)
             else:
-                i += 1
+                index += 1
 
-        self._chat_id = count
-        return count
+        previous = self._store.load_session(self._session_id)
+        for offset, record in enumerate(records):
+            if offset < len(previous) and previous[offset].get("timestamp"):
+                record["timestamp"] = previous[offset]["timestamp"]
+            else:
+                record["timestamp"] = datetime.now(timezone.utc).isoformat()
+        self._store.replace_turns(self._session_id, records)
+        self._chat_id = len(records)
+        return self._chat_id
 
     @property
     def max_iterations(self) -> int:
