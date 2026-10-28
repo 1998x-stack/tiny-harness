@@ -13,19 +13,27 @@ def parse_args() -> Namespace:
     parser.add_argument("--model", "-m", default="deepseek-chat", help="Model identifier")
     parser.add_argument("--workspace", "-w", default=os.getcwd(), help="Workspace directory")
     parser.add_argument("--provider", default="deepseek", help="LLM provider: anthropic, openai, deepseek")
-    parser.add_argument("--api-base-url", default="https://api.deepseek.com/v1", help="Custom API base URL")
+    parser.add_argument("--api-base-url", default=None, help="Custom API base URL (defaults to provider endpoint)")
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
     parser.add_argument("--skills", default="", help="Comma-separated skill names (default: files)")
     parser.add_argument("--no-hitl", action="store_true", help="Disable human-in-the-loop approval prompts")
     parser.add_argument("--tui", action="store_true", help="Use rich TUI mode (requires 'rich' package)")
-    parser.add_argument("--api-key-env", default="DEEPSEEK_API_KEY", help="Env var for API key")
+    parser.add_argument("--api-key-env", default=None, help="Env var for API key (defaults to provider-specific variable)")
     return parser.parse_args()
 
 
 def _get_api_key(args: Namespace) -> str:
-    key = os.environ.get(args.api_key_env)
+    default_envs = {
+        "deepseek": "DEEPSEEK_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+    }
+    env_name = args.api_key_env or default_envs.get(args.provider)
+    if env_name is None:
+        raise ValueError(f"Unknown provider: {args.provider}")
+    key = os.environ.get(env_name)
     if not key:
-        print(f"Error: API key not found. Set {args.api_key_env} environment variable.", file=sys.stderr)
+        print(f"Error: API key not found. Set {env_name} environment variable.", file=sys.stderr)
         sys.exit(1)
     return key
 

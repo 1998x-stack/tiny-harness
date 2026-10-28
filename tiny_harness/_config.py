@@ -1,11 +1,11 @@
 # tiny_harness/_config.py
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class AgentConfig:
     model: str
-    api_key: str
+    api_key: str = field(repr=False)
     workspace: str
     provider: str = "deepseek"
     api_base_url: str | None = None
