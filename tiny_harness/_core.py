@@ -50,7 +50,7 @@ class Agent:
     def _create_provider(self, config: AgentConfig):
         match config.provider:
             case "anthropic":
-                return AnthropicProvider(config.api_key, config.model, max_tokens=config.max_tokens)
+                return AnthropicProvider(config.api_key, config.model, max_tokens=config.max_tokens, base_url=config.api_base_url or "https://api.anthropic.com/v1")
             case "openai" | "deepseek":
                 defaults = {
                     "openai": "https://api.openai.com/v1",
