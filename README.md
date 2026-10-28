@@ -313,7 +313,15 @@ ANTHROPIC_API_KEY="sk-ant-..." pytest tests/test_integration.py -v -m integratio
 
 The configured `context_window` reserves `max_tokens` for model output. When input history grows too large, the harness compacts oversized tool outputs and can discard complete older turns, preserving the latest user turn and tool-call/result pairing. This budget currently uses a heuristic estimate, not model-specific tokenizers.
 
-The built-in Shell skill requires human approval by default. In `--no-hitl` mode, explicit unsandboxed Shell access requires `--allow-unsafe-shell`; **this does not provide OS filesystem or network isolation**.
+The built-in Shell skill requires human approval by default. In `--no-hitl` mode, Shell additionally requires `--allow-unsafe-shell`. The default `shell_sandbox=off` is **not** OS-isolated; Linux users may opt into `--shell-sandbox bubblewrap` for namespace-isolated execution with per-process resource limits. See [Linux Shell Sandbox](docs/SHELL_SANDBOX.md).
+
+## Optional Linux Shell Sandbox
+
+```bash
+tiny-harness --provider deepseek --skills files,shell --shell-sandbox bubblewrap --sandbox-cpu-seconds 30 --sandbox-memory-mb 1024 --sandbox-file-mb 32
+```
+
+Requires system-installed `bubblewrap` and `prlimit`, and working unprivileged namespaces. Sandboxed mode blocks external network by default; it never falls back to a host shell if setup fails. These per-process limits are **not** cgroup-wide quotas.
 
 ## Security
 
