@@ -17,6 +17,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
     parser.add_argument("--skills", default="", help="Comma-separated skill names (default: files)")
     parser.add_argument("--no-hitl", action="store_true", help="Disable human-in-the-loop approval prompts")
+    parser.add_argument("--allow-unsafe-shell", action="store_true", help="Explicitly permit unsandboxed shell with --no-hitl (dangerous)")
     parser.add_argument("--tui", action="store_true", help="Use rich TUI mode (requires 'rich' package)")
     parser.add_argument("--api-key-env", default=None, help="Env var for API key (defaults to provider-specific variable)")
     return parser.parse_args()
@@ -161,7 +162,7 @@ def main():
 
     from tiny_harness import Agent, Prompt, Config
     prompt = Prompt("You are a helpful AI assistant.")
-    config = Config(model=args.model, api_key=api_key, workspace=args.workspace, provider=args.provider, api_base_url=args.api_base_url, max_iterations=args.max_iterations, no_hitl=args.no_hitl)
+    config = Config(model=args.model, api_key=api_key, workspace=args.workspace, provider=args.provider, api_base_url=args.api_base_url, max_iterations=args.max_iterations, no_hitl=args.no_hitl, allow_unsafe_shell=args.allow_unsafe_shell)
     agent = Agent(prompt=prompt, config=config)
 
     if not args.no_hitl:
