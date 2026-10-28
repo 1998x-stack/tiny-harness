@@ -2,14 +2,13 @@
 
 **Minimal AI agent harness — wrap any LLM with tools and a streaming CLI.**
 
-> 中文一句话：极小的 AI Agent 执行环境（harness），给任意 LLM 配上工具、对话循环、流式事件与 CLI 会话。约 1,100 行、零魔法、一个依赖，是 1998x-stack harness 家族的最小基线。
+> 中文一句话：极小的 AI Agent 执行环境（harness），给 LLM 配上工具、对话循环、流式事件与 CLI 会话。强调可读性、显式状态和可测试的执行契约，是 1998x-stack harness 家族的最小基线。
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Python tests](https://github.com/1998x-stack/tiny-harness/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/1998x-stack/tiny-harness/actions/workflows/ci.yml)
-[![Lines](https://img.shields.io/badge/code-1%2C350%20lines-lightgrey)](.)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-`tiny-harness` is a ~1,100-line Python package that turns an LLM into an AI agent — giving it tools, a conversation loop, streaming events, and a CLI session. One dependency. One import.
+`tiny-harness` is a small Python agent runtime with tools, a conversation loop, streaming events, and CLI sessions. It uses explicit contracts for tool validation, filesystem paths, and success/failure status.
 
 ```bash
 pip install tiny-harness
@@ -49,7 +48,7 @@ tiny-harness "Create hello.py"
 - **Rich TUI** — optional `--tui` mode with panels, markdown rendering, color-coded messages (`pip install tiny-harness[tui]`)
 - **Persistence** — JSONL session history with `/save` and `/history` commands
 - **Filesystem guard** — workspace boundary enforcement, path traversal protection
-- **1,125 lines** — readable top-to-bottom, CleanRL-inspired code style
+- **Inspectable contracts** — explicit tool risk classification, workspace path declarations, and JSON Schema Draft 2020-12 validation
 
 ## Quick Start
 
@@ -68,13 +67,13 @@ pip install tiny-harness
 export ANTHROPIC_API_KEY="sk-ant-..."
 
 # Run a single prompt
-tiny-harness "Create a hello.py file that prints 'Hello, world!'"
+tiny-harness --provider anthropic "Create a hello.py file that prints 'Hello, world!'"
 ```
 
 ### Session Mode
 
 ```bash
-tiny-harness --model claude-sonnet-4-20250514 --skills files
+tiny-harness --provider anthropic --model claude-sonnet-4-20250514 --skills files
 ```
 
 ```
@@ -96,7 +95,7 @@ Session commands: `/exit`, `/help`, `/tools`, `/clear`.
 
 ```bash
 pip install tiny-harness[tui]
-tiny-harness --tui --model claude-sonnet-4-20250514 --skills files
+tiny-harness --tui --provider anthropic --model claude-sonnet-4-20250514 --skills files
 ```
 
 ```
@@ -207,7 +206,7 @@ agent.tools.register_from_def(
         description="Get current weather for a city.",
         parameters={"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
     ),
-    handler=lambda city: f"Sunny, 22°C in {city}",
+    handler=lambda args: "Sunny, 22°C in " + args["city"],
 )
 
 # Load built-in skills
@@ -236,12 +235,14 @@ agent.on("error", lambda e: print(f"Error: {e.message}"))
 | `max_consecutive_errors` | `3` | Consecutive error budget |
 | `timeout_ms` | `30_000` | Tool execution timeout |
 | `max_tool_result_chars` | `50_000` | Truncate large results |
+| `context_window` | `200_000` | Input + reserved output window (heuristic estimator) |
+| `max_tokens` | `16_384` | Reserve for model output; must be less than context_window |
 
 ## Providers
 
-### Anthropic (default)
+### Anthropic (explicit)
 ```python
-config = Config(model="claude-sonnet-4-20250514", api_key="...", workspace=".")
+config = Config(model="claude-sonnet-4-20250514", api_key="...", workspace=".", provider="anthropic")
 ```
 
 ### OpenAI
@@ -290,6 +291,8 @@ Full design documentation in [`docs/`](docs/):
 - [cli.md](docs/cli.md) — CLI design, streaming format
 - [skills.md](docs/skills.md) — skill system architecture
 - [code-style.md](docs/code-style.md) — coding conventions
+- [TOOL_FACTORY.md](docs/TOOL_FACTORY.md) — JSON Schema and filesystem path contract for custom tools
+- [TOOL_OUTCOME.md](docs/TOOL_OUTCOME.md) — typed tool execution success/failure semantics
 - [adr/](docs/adr/) — architectural decision records
 
 ## Development
@@ -314,7 +317,7 @@ The built-in Shell skill requires human approval by default. In `--no-hitl` mode
 
 ## Security
 
-The built-in Shell skill is **not** an OS sandbox. Read [security boundaries](docs/security.md) and the [phased optimization status](docs/OPTIMIZATION_STATUS.md) before deploying to untrusted environments.
+Tool arguments are checked with JSON Schema Draft 2020-12 and declared filesystem paths are normalized before tool execution. **These checks are not an OS sandbox**. Read [security boundaries](docs/security.md) and the [phased optimization status](docs/OPTIMIZATION_STATUS.md) before deploying to untrusted environments.
 
 ## License
 

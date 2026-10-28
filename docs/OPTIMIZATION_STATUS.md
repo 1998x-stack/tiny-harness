@@ -24,6 +24,8 @@
 | Phase 1 | [#16](https://github.com/1998x-stack/tiny-harness/pull/16) | Anthropic SSE 截断检测、message_stop 校验、usage/finish、可配置网关 | PR CI 通过；真实 API 冒烟仍待执行 |
 | Phase 2 | [#18](https://github.com/1998x-stack/tiny-harness/pull/18) | ToolOutcome 显式成功/失败契约，文件、搜索、Shell 异常传给 ErrorBudget | PR CI 通过；低层直接调用保留字符串兼容 |
 | Phase 1 | [#19](https://github.com/1998x-stack/tiny-harness/pull/19) | OpenAI/Anthropic 流式请求在首次输出前重试 429/5xx/部分网络错误，Retry-After 上限；输出后禁重试 | PR CI 通过；真实 API 冒烟仍待执行 |
+| Phase 4 | [#21](https://github.com/1998x-stack/tiny-harness/pull/21) | ToolDef 显式 path_args、所有声明路径规范化、第三方兼容字段全部检查 | PR CI 通过；仍非 OS 沙箱 |
+| Phase 4 | [#22](https://github.com/1998x-stack/tiny-harness/pull/22) | Draft 2020-12 JSON Schema（嵌套/组合/数组），注册时检查 Schema，拒绝远程引用 | PR CI 通过；引入 jsonschema 运行时依赖 |
 
 ## 待完成事项（不应标记为已修复）
 
@@ -38,7 +40,7 @@
 ### P2：持续质量提升
 
 - 文件工具：有界读取、二进制识别、原子写、拒绝默认覆盖与 edit_file。
-- ToolRegistry：完整 JSON Schema 与 path 参数契约；消除静态白名单。
+- ToolRegistry：JSON Schema 与显式 path 参数契约已落地；进一步清理过渡期遗留工具名称兼容映射，完善工具能力策略与插件迁移。
 - EventBus：事件成功状态、耗时与稳定的 finish/usage 契约。
 - 错误预算与循环检测：区分失败重复与成功的合法重复，避免错误的长期封禁。
 - Session：旧格式兼容迁移、增量写入、CLI `/resume`、大结果 sidecar 与索引。
