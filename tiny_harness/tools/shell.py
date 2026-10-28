@@ -76,7 +76,7 @@ def run_command(args: dict) -> str:
 
 # The agent registers the async entrypoint below. Unlike the legacy sync helper
 # it can stop its whole process group when the executor cancels the coroutine.
-async def run_command_async(args: dict, *, structured: bool = False) -> str | ToolOutcome:
+async def run_command_async(args: dict, *, structured: bool = False, sandbox_mode: str = "off", workspace: str | None = None) -> str | ToolOutcome:
     import asyncio
     import os
     import signal
@@ -94,7 +94,20 @@ async def run_command_async(args: dict, *, structured: bool = False) -> str | To
         if key in safe_keys or key.startswith("LC_")
     }
 
-    cmd, use_shell = _build_args(command)
+    if sandbox_mode not in ("off", "bubblewrap"):
+        raise ValueError(f"Unknown shell sandbox mode: {sandbox_mode!r}")
+    if sandbox_mode == "bubblewrap":
+        from tiny_harness._sandbox import build_bubblewrap_argv
+        if workspace is None:
+            raise ValueError("A trusted workspace is required for bubblewrap")
+        # Fail closed: do not use an ordinary shell if bwrap is absent.
+        cmd, use_shell = build_bubblewrap_argv(
+            command, workspace=workspace, cwd=cwd,
+        ), False
+        cwd = workspace
+    else:
+        cmd, use_shell = _build_args(command)
+
     options = {
         "cwd": cwd,
         "stdin": asyncio.subprocess.DEVNULL,
