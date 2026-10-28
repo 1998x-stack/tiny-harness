@@ -90,6 +90,7 @@ def register(agent) -> None:
                 "required": ["command"],
             },
             risk_level="dangerous",
+            path_args=("cwd",),
         ),
         partial(run_command_async, structured=True),
     )
