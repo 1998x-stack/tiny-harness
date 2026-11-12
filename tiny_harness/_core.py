@@ -21,7 +21,13 @@ class Agent:
     def __init__(self, prompt: Prompt, config: AgentConfig, store: SessionStore | None = None):
         self._config = config
         self._prompt = prompt
-        self._messages = MessageManager(prompt)
+        if config.shell_sandbox not in ("off", "bubblewrap", "docker"):
+            raise ValueError(f"Invalid shell_sandbox: {config.shell_sandbox!r}")
+        if config.context_window <= config.max_tokens:
+            raise ValueError("context_window must exceed max_tokens (reserved output budget)")
+        self._messages = MessageManager(
+            prompt, max_input_tokens=config.context_window - config.max_tokens,
+        )
         self._llm_provider = self._create_provider(config)
         self._tool_registry = ToolRegistry()
         self._guard = FilesystemGuard(config.workspace)
@@ -34,6 +40,7 @@ class Agent:
             self._tool_registry, self._guard, config.timeout_ms, config.max_tool_result_chars,
             approval_gate=self._approval_gate,
             event_bus=self._event_bus,
+            allow_unsafe_shell=config.allow_unsafe_shell,
         )
         self._loaded_skills: list[str] = []
         self._running = False
@@ -44,7 +51,7 @@ class Agent:
     def _create_provider(self, config: AgentConfig):
         match config.provider:
             case "anthropic":
-                return AnthropicProvider(config.api_key, config.model, max_tokens=config.max_tokens)
+                return AnthropicProvider(config.api_key, config.model, max_tokens=config.max_tokens, base_url=config.api_base_url or "https://api.anthropic.com/v1")
             case "openai" | "deepseek":
                 default_url = (
                     "https://api.deepseek.com/v1"
@@ -128,7 +135,7 @@ class Agent:
         queue: list[StreamEvent] = []
 
         async def collector(event: StreamEvent):
-            queue.append(event)
+            queue.put_nowait(event)
 
         self._event_bus.subscribe(collector)
         task: asyncio.Task | None = None
@@ -158,6 +165,8 @@ class Agent:
 
     def clear(self) -> None:
         self._messages.clear()
+        if self._approval_gate is not None:
+            self._approval_gate.session.clear()
 
     def start_session(self, session_id: str | None = None) -> str:
         if self._session_id is not None:
@@ -194,14 +203,22 @@ class Agent:
                 tc_list = None
                 if tool_calls:
                     from tiny_harness._llm import ToolCallRequest
-                    tc_list = [
-                        ToolCallRequest(id=tc.get("id", f"call_{i}"), name=tc["name"], arguments=tc.get("arguments", {}))
-                        for i, tc in enumerate(tool_calls)
-                    ]
+                    tc_list = []
+                    for i, tc in enumerate(tool_calls):
+                        arguments = tc.get("arguments", {})
+                        if isinstance(arguments, str):
+                            arguments = json.loads(arguments)
+                        tc_list.append(ToolCallRequest(
+                            id=tc.get("id") or f"call_{i}",
+                            name=tc["name"],
+                            arguments=arguments,
+                        ))
                 self._messages.add_assistant(text=content, tool_calls=tc_list)
                 if tool_results:
-                    for tr in tool_results:
-                        tr_id = tr.get("id", "")
+                    for index, tr in enumerate(tool_results):
+                        tr_id = tr.get("id") or tr.get("tool_call_id") or (
+                            tc_list[index].id if tc_list and index < len(tc_list) else ""
+                        )
                         tr_content = tr.get("content", "")
                         self._messages.add_tool_result(tr_id, tr_content)
         return len(records)
@@ -284,7 +301,7 @@ class Agent:
                 i += 1
 
             else:
-                i += 1
+                index += 1
 
         self._store.replace_session(self._session_id, turns)
         self._chat_id = len(turns)

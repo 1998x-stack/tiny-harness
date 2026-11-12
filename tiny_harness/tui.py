@@ -45,11 +45,16 @@ async def run_tui_session(agent, model: str):
             if len(val) > 80:
                 val = val[:77] + "..."
             console.print(f"     {k}: {val}", style=c["dim"])
+        session_allowed = request.risk_level not in ("destructive", "dangerous")
         while True:
-            resp = (await asyncio.to_thread(console.input, "  [y/n/s(ession)/m(odify)]: ")).strip().lower()
+            prompt = "  [y/n/s(ession)/m(odify)]: " if session_allowed else "  [y/n/m(odify)]: "
+            resp = (await asyncio.to_thread(console.input, prompt)).strip().lower()
             if resp == "y":
                 return ApprovalDecision(approved=True)
             if resp == "s":
+                if not session_allowed:
+                    console.print("  Session approval is unavailable for high-risk tools.", style=c["err"])
+                    continue
                 return ApprovalDecision(approved=True, session_approved=True)
             if resp == "n" or resp == "":
                 return ApprovalDecision(approved=False, reason="User denied")

@@ -1,0 +1,29 @@
+# Security model / 安全边界
+
+tiny-harness 是可执行工具的 Agent harness，**不是安全沙箱**。模型输出、外部文档内容、工具输出都应视为非可信输入。
+
+## 已有保护（截至 2026-10-28）
+
+- `search_content` 使用 `rg -e PATTERN -- PATH`，并由执行器校验工作区路径；regex 不再被当作命令行选项。
+- 文件工具的常规路径受 `FilesystemGuard` canonicalization 与 workspace 边界检查；并非 race-free 的操作系统隔离。
+- HITL 默认审核 mutation/destructive/dangerous；destructive/dangerous 不可使用会话级永久批准。回调异常按拒绝处理。
+- `ToolDef` 未声明风险时默认 mutation；未知 risk_level 在注册阶段拒绝；safe 风险等级仍执行文件路径守卫。
+- `--no-hitl` 下内置 Shell 工具默认不可执行；使用 `--no-hitl --allow-unsafe-shell` 才能显式启用（不等于沙箱）。
+- 可选 `shell_sandbox="bubblewrap"` 为 Linux 内置 async Shell 提供 mount/network/PID namespace 约束，启动失败不自动降级；`prlimit` CPU/AS/FSIZE 限制是逐进程限制，非 cgroup 总配额。参见 [SHELL_SANDBOX.md](SHELL_SANDBOX.md)。
+- 可选 `shell_sandbox="docker"` 在 Linux 上使用摘要固定的本地 OCI 镜像、非 root UID、只读根、禁网络、最小权限和 cgroup CPU/内存/PID 总限制；真实容器 CI 验证通过，但 Docker daemon、镜像、工作区挂载仍是信任边界。参见 [OCI_SANDBOX.md](OCI_SANDBOX.md)。
+- built-in Shell skill 的 async handler 运行于指定 cwd；POSIX 上超时/取消时终止进程组；不继承 `*_API_KEY` 等未在 allow-list 的环境变量。
+- 会话快照使用原子替换与受限文件权限（POSIX `0600`）。
+
+## 未提供的隔离能力
+
+- **默认 `shell_sandbox=off` 时 Shell 没有操作系统级文件系统隔离**：即使 cwd 在 workspace，命令仍可能访问机器上该进程有权限访问的路径。开启 bubblewrap 只是选配 Linux namespace 隔离，尚未在所有目标环境做端到端验证。
+- 默认不隔离的 Shell 仍可能访问网络、用户凭据文件、Git 配置及 SSH agent；环境变量白名单不能覆盖全部隐式凭据路径。Docker 模式通过独立容器约束这条路径，但不保护其他 Python 工具。
+- 历史同步 `run_command` 辅助函数保留用于兼容，并未获得与 registered async Shell 等价的进程组取消保障。
+- Path guard 的检查和 handler 的实际打开文件不是一个不可分割的 OS 操作；工作区内容可被外部进程并发替换时仍有 TOCTOU 风险。
+- 在 Windows 上，异步 handler 的 `process.kill()` 不提供 POSIX 进程组等价的孙进程终止保障。
+
+## 部署建议
+
+仅对可信工作目录开启工具；不要把 Shell skill 暴露给不可信用户或远程多租户。生产部署应使用用户隔离的容器或沙箱、只读挂载、网络限制、资源配额和单独的工作凭据。真正的默认安全策略应在操作系统/工具执行器层强制，而不是依赖 Skill Prompt 中的禁止语句。
+
+涉及新的 Shell 能力、第三方 Tool 或新的路径参数时，必须补充对抗性回归测试，再允许进入 `main`。

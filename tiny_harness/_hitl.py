@@ -133,7 +133,7 @@ class ApprovalGate:
         if not self.needs_approval(tool_name, risk_level):
             return ApprovalDecision(approved=True, reason="auto-approved (low risk)")
 
-        if self._session.is_approved(risk_level):
+        if risk_level not in ("destructive", "dangerous") and self._session.is_approved(risk_level):
             return ApprovalDecision(approved=True, reason="session-approved")
 
         if self._handler is None:

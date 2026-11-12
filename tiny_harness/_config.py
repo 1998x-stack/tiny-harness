@@ -15,9 +15,18 @@ class AgentConfig:
     timeout_ms: int = 30_000
     max_tool_result_chars: int = 50_000
     max_tokens: int = 16384
+    context_window: int = 200_000
     require_approval_for: list[str] | None = None
     approval_timeout_ms: int = 120_000
     no_hitl: bool = False
+    allow_unsafe_shell: bool = False
+    shell_sandbox: str = "off"  # 'off' or 'bubblewrap' (Linux only)
+    sandbox_cpu_seconds: int = 30
+    sandbox_memory_mb: int = 1024
+    sandbox_file_mb: int = 32
+    sandbox_image: str | None = None  # Immutable OCI @sha256 digest
+    sandbox_cpus: float = 1.0
+    sandbox_pids_limit: int = 64
 
     def __post_init__(self) -> None:
         positive_limits = (

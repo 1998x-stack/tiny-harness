@@ -29,7 +29,7 @@ def test_session_approvals_cascade_upward():
     assert sa.is_approved("dangerous") is False
 
 
-def test_session_approvals_destructive_not_cascaded():
+def test_session_approvals_destructive_not_persisted():
     sa = SessionApprovals()
     sa.approve_for_session("destructive")
     assert sa.is_approved("mutation") is False

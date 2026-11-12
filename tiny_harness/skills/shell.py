@@ -1,5 +1,7 @@
 # tiny_harness/skills/shell.py
-from tiny_harness.tools.shell import run_command
+from functools import partial
+
+from tiny_harness.tools.shell import run_command_async
 from tiny_harness._tools import ToolDef
 
 SHELL_PROMPT = """
@@ -88,7 +90,18 @@ def register(agent) -> None:
                 "required": ["command"],
             },
             risk_level="dangerous",
+            path_args=("cwd",),
         ),
-        run_command,
+        partial(
+            run_command_async, structured=True,
+            sandbox_mode=agent._config.shell_sandbox,
+            workspace=agent._guard.guard("."),
+            sandbox_cpu_seconds=agent._config.sandbox_cpu_seconds,
+            sandbox_memory_mb=agent._config.sandbox_memory_mb,
+            sandbox_file_mb=agent._config.sandbox_file_mb,
+            sandbox_image=agent._config.sandbox_image,
+            sandbox_cpus=agent._config.sandbox_cpus,
+            sandbox_pids_limit=agent._config.sandbox_pids_limit,
+        ),
     )
     agent._prompt.append(SHELL_PROMPT)

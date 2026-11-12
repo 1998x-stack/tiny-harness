@@ -2,6 +2,8 @@
 
 **Minimal AI agent harness — wrap any LLM with tools and a streaming CLI.**
 
+> 中文一句话：极小的 AI Agent 执行环境（harness），给 LLM 配上工具、对话循环、流式事件与 CLI 会话。强调可读性、显式状态和可测试的执行契约，是 1998x-stack harness 家族的最小基线。
+
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/tests-271%20passed-brightgreen)](.)
 [![Lines](https://img.shields.io/badge/code-%7E2%2C000%20lines-lightgrey)](.)
@@ -51,6 +53,8 @@ tiny-harness "Create hello.py"
 
 ## Quick Start
 
+> 中文要点：三行 pip 安装即可用；CLI 一行运行单次任务，或进入交互式会话；`files` 技能默认加载。
+
 ### Install
 
 ```bash
@@ -64,13 +68,13 @@ pip install tiny-harness
 export ANTHROPIC_API_KEY="sk-ant-..."
 
 # Run a single prompt
-tiny-harness "Create a hello.py file that prints 'Hello, world!'"
+tiny-harness --provider anthropic "Create a hello.py file that prints 'Hello, world!'"
 ```
 
 ### Session Mode
 
 ```bash
-tiny-harness --model claude-sonnet-4-20250514 --skills files
+tiny-harness --provider anthropic --model claude-sonnet-4-20250514 --skills files
 ```
 
 ```
@@ -92,7 +96,7 @@ Session commands: `/exit`, `/help`, `/tools`, `/clear`.
 
 ```bash
 pip install tiny-harness[tui]
-tiny-harness --tui --model claude-sonnet-4-20250514 --skills files
+tiny-harness --tui --provider anthropic --model claude-sonnet-4-20250514 --skills files
 ```
 
 ```
@@ -122,6 +126,8 @@ tiny-harness "Say hi" --model deepseek-chat --provider deepseek --api-base-url h
 ```
 
 ## Architecture
+
+> 中文要点：`Agent.run(prompt)` 内嵌 MessageManager（对话数组）+ AgentLoop（while 状态机），LLMProvider 负责流式、ToolExecutor 负责「校验→守卫→执行→格式化」。核心循环：prompt → LLM → 工具调用 → 执行 → 结果 → LLM → …→ 最终答案。
 
 ```
 User Prompt
@@ -225,19 +231,21 @@ agent.on("error", lambda e: print(f"Error: {e.message}"))
 | `model` | required | Model identifier |
 | `api_key` | required | Provider API key |
 | `workspace` | required | Root directory for file operations |
-| `provider` | `"anthropic"` | `"anthropic"`, `"openai"`, `"deepseek"` |
+| `provider` | `"deepseek"` | `"anthropic"`, `"openai"`, `"deepseek"` |
 | `api_base_url` | provider default | Custom API endpoint |
 | `max_iterations` | `25` | Max loop iterations |
 | `max_errors` | `10` | Total tool error budget |
 | `max_consecutive_errors` | `3` | Consecutive error budget |
 | `timeout_ms` | `30_000` | Tool execution timeout |
 | `max_tool_result_chars` | `50_000` | Truncate large results |
+| `context_window` | `200_000` | Input + reserved output window (heuristic estimator) |
+| `max_tokens` | `16_384` | Reserve for model output; must be less than context_window |
 
 ## Providers
 
-### Anthropic (default)
+### Anthropic (explicit)
 ```python
-config = Config(model="claude-sonnet-4-20250514", api_key="...", workspace=".")
+config = Config(model="claude-sonnet-4-20250514", api_key="...", workspace=".", provider="anthropic")
 ```
 
 ### OpenAI
@@ -252,6 +260,22 @@ config = Config(
     provider="deepseek", api_base_url="https://api.deepseek.com/v1",
 )
 ```
+
+## The Harness Lineage（本系定位）
+
+`tiny-harness` 是 1998x-stack 循序渐进 harness 家族的**最小基线**——先做到可读、零魔法、零冗余，再演进出更完整的能力：
+
+| 成员 | 定位 | 与 tiny-harness 的关系 |
+|------|------|------------------------|
+| **tiny-harness** | 最小执行环境：loop + tools + streaming CLI | --- 本仓库（基线） |
+| `mid-harness` | hooks / MCP / 渐进式 skills | 在 hook 之上扩展，不破坏单文件可读性 |
+| `effective-harness` | 零配置 CLI wrapper 实现 Anthropic `twelve-factor agent` | 面向生产约定，tiny 的思路给到上一层 |
+| `mega-harness` | 更完整的全家桶（规划/脚手架） | 集 loop + 调度 + 扩展包 |
+| `agent-loop` | 跨会话的多 Agent 编排（Initializer / Executor） | 从「单会话执行」升级到「跨会话编排」 |
+| `ralph-loop` | 插件式确定性自治循环（文件系统即记忆） | 从「工具封装」到「闭环自治」 |
+| `loop-runner` | Generator–Evaluator 编码验证循环引擎 | 把「写码→验证」固化为循环 |
+
+> 特点：从 tiny 的小而美到 mid/effective 的工程化，再到 agent-loop/ralph-loop 的自治化——每一层都继承上一层的可读性与诚实度。
 
 ## Design Principles
 
@@ -270,6 +294,8 @@ Full design documentation in [`docs/`](docs/):
 - [cli.md](docs/cli.md) — CLI design, streaming format
 - [skills.md](docs/skills.md) — skill system architecture
 - [code-style.md](docs/code-style.md) — coding conventions
+- [TOOL_FACTORY.md](docs/TOOL_FACTORY.md) — JSON Schema and filesystem path contract for custom tools
+- [TOOL_OUTCOME.md](docs/TOOL_OUTCOME.md) — typed tool execution success/failure semantics
 - [adr/](docs/adr/) — architectural decision records
 
 ## Development
@@ -285,6 +311,37 @@ pytest tests/ --ignore=tests/test_integration.py
 # Run integration tests (requires ANTHROPIC_API_KEY)
 ANTHROPIC_API_KEY="sk-ant-..." pytest tests/test_integration.py -v -m integration
 ```
+
+## Context budget and unattended execution
+
+The configured `context_window` reserves `max_tokens` for model output. When input history grows too large, the harness compacts oversized tool outputs and can discard complete older turns, preserving the latest user turn and tool-call/result pairing. This budget currently uses a heuristic estimate, not model-specific tokenizers.
+
+The built-in Shell skill requires human approval by default. In `--no-hitl` mode, Shell additionally requires `--allow-unsafe-shell`. The default `shell_sandbox=off` is **not** OS-isolated. Linux can use [Bubblewrap](docs/SHELL_SANDBOX.md) with per-process limits, or opt into a [Docker OCI sandbox](docs/OCI_SANDBOX.md) with container-wide cgroup limits (validated in real GitHub CI).
+
+## Optional Linux Shell Sandbox
+
+```bash
+tiny-harness --provider deepseek --skills files,shell --shell-sandbox bubblewrap --sandbox-cpu-seconds 30 --sandbox-memory-mb 1024 --sandbox-file-mb 32
+```
+
+Requires system-installed `bubblewrap` and `prlimit`, and working unprivileged namespaces. Sandboxed mode blocks external network by default; it never falls back to a host shell if setup fails. These per-process limits are **not** cgroup-wide quotas.
+
+## OCI Docker Sandbox (Linux)
+
+```bash
+docker pull alpine:3.20
+docker image inspect --format '{{index .RepoDigests 0}}' alpine:3.20
+tiny-harness --provider deepseek --skills files,shell \
+  --shell-sandbox docker \
+  --sandbox-image 'alpine@sha256:<your_64_hex_digest>' \
+  --sandbox-cpus 1.0 --sandbox-memory-mb 1024 --sandbox-pids-limit 64
+```
+
+Use the **actual** digest returned by `docker image inspect`; the displayed digest is only a placeholder. The Docker sandbox disables external networking, requires a pre-pulled image and uses a container read-only root with a writable workspace. A real OCI CI job verifies cgroup and filesystem/network isolation. Docker daemon privileges and third-party Python tools are still outside this boundary. See [OCI Sandbox details](docs/OCI_SANDBOX.md).
+
+## Security
+
+Tool arguments are checked with JSON Schema Draft 2020-12 and declared filesystem paths are normalized before tool execution. **These checks are not an OS sandbox**. Read [security boundaries](docs/security.md) and the [phased optimization status](docs/OPTIMIZATION_STATUS.md) before deploying to untrusted environments.
 
 ## License
 

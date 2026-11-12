@@ -22,6 +22,14 @@ def parse_args() -> Namespace:
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
     parser.add_argument("--skills", default=None, help="Comma-separated skill names (default: files; empty disables tools)")
     parser.add_argument("--no-hitl", action="store_true", help="Disable human-in-the-loop approval prompts")
+    parser.add_argument("--allow-unsafe-shell", action="store_true", help="Explicitly permit Shell without human approval (dangerous)")
+    parser.add_argument("--shell-sandbox", choices=("off", "bubblewrap", "docker"), default="off", help="Optional Linux bwrap Shell sandbox; fails closed if unavailable")
+    parser.add_argument("--sandbox-cpu-seconds", type=int, default=30, help="Bubblewrap process CPU limit (seconds)")
+    parser.add_argument("--sandbox-memory-mb", type=int, default=1024, help="Bubblewrap per-process virtual memory limit (MiB)")
+    parser.add_argument("--sandbox-file-mb", type=int, default=32, help="Bubblewrap file size limit (MiB)")
+    parser.add_argument("--sandbox-image", default=None, help="Pre-pulled OCI image pinned by @sha256 digest (Docker mode)")
+    parser.add_argument("--sandbox-cpus", type=float, default=1.0, help="Docker cgroup CPU quota")
+    parser.add_argument("--sandbox-pids-limit", type=int, default=64, help="Docker container-wide process limit")
     parser.add_argument("--tui", action="store_true", help="Use rich TUI mode (requires 'rich' package)")
     parser.add_argument("--api-key-env", default=None, help="Env var for API key")
     args = parser.parse_args()
@@ -38,9 +46,17 @@ def parse_args() -> Namespace:
 
 
 def _get_api_key(args: Namespace) -> str:
-    key = os.environ.get(args.api_key_env)
+    default_envs = {
+        "deepseek": "DEEPSEEK_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+    }
+    env_name = args.api_key_env or default_envs.get(args.provider)
+    if env_name is None:
+        raise ValueError(f"Unknown provider: {args.provider}")
+    key = os.environ.get(env_name)
     if not key:
-        print(f"Error: API key not found. Set {args.api_key_env} environment variable.", file=sys.stderr)
+        print(f"Error: API key not found. Set {env_name} environment variable.", file=sys.stderr)
         sys.exit(1)
     return key
 
@@ -131,11 +147,16 @@ async def _cli_approval_handler(request: ToolApprovalRequest) -> ApprovalDecisio
         if len(val) > 80:
             val = val[:77] + "..."
         print(f"     {k}: {val}")
+    session_allowed = request.risk_level not in ("destructive", "dangerous")
     while True:
-        resp = (await _async_input("  [y=yes / n=no / s=yes for session / m=modify]: ")).strip().lower()
+        prompt = "  [y=yes / n=no / s=yes for session / m=modify]: " if session_allowed else "  [y=yes / n=no / m=modify]: "
+        resp = (await _async_input(prompt)).strip().lower()
         if resp == "y":
             return ApprovalDecision(approved=True)
         if resp == "s":
+            if not session_allowed:
+                print("  Session approval is unavailable for high-risk tools.")
+                continue
             return ApprovalDecision(approved=True, session_approved=True)
         if resp == "n" or resp == "":
             return ApprovalDecision(approved=False, reason="User denied")
@@ -161,7 +182,7 @@ def main():
 
     from tiny_harness import Agent, Prompt, Config
     prompt = Prompt("You are a helpful AI assistant.")
-    config = Config(model=args.model, api_key=api_key, workspace=args.workspace, provider=args.provider, api_base_url=args.api_base_url, max_iterations=args.max_iterations, no_hitl=args.no_hitl)
+    config = Config(model=args.model, api_key=api_key, workspace=args.workspace, provider=args.provider, api_base_url=args.api_base_url, max_iterations=args.max_iterations, no_hitl=args.no_hitl, allow_unsafe_shell=args.allow_unsafe_shell, shell_sandbox=args.shell_sandbox, sandbox_cpu_seconds=args.sandbox_cpu_seconds, sandbox_memory_mb=args.sandbox_memory_mb, sandbox_file_mb=args.sandbox_file_mb, sandbox_image=args.sandbox_image, sandbox_cpus=args.sandbox_cpus, sandbox_pids_limit=args.sandbox_pids_limit)
     agent = Agent(prompt=prompt, config=config)
 
     if not args.no_hitl:

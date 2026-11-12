@@ -2,6 +2,7 @@
 """JSONL-based session persistence for tiny-harness conversations."""
 import json
 import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,10 +97,17 @@ class SessionStore:
             return []
         records = []
         with open(filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    records.append(json.loads(line))
+            lines = f.readlines()
+        for index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                # Crash-safe loading: ignore only an incomplete trailing record.
+                if index == len(lines) - 1:
+                    break
+                raise
         return records
 
     def list_sessions(self) -> list[dict]:
