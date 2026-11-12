@@ -14,6 +14,7 @@ def test_basic_echo():
 def test_cwd():
     result = run_command({"command": "pwd", "cwd": "/tmp"})
     assert "/tmp" in result
+    assert not result.startswith("Error:")
 
 
 def test_exit_code_nonzero():

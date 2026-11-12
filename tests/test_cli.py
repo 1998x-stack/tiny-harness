@@ -6,6 +6,10 @@ from argparse import Namespace
 from tiny_harness.cli import parse_args, _run_one_shot
 
 
+def _close_coroutine(coroutine):
+    coroutine.close()
+
+
 def test_parse_args_one_shot():
     with patch.object(sys, 'argv', ['tiny-harness', 'Hello']):
         args = parse_args()
@@ -33,7 +37,7 @@ def test_parse_args_with_options():
         assert args.max_iterations == 10
         assert args.skills == 'files'
         assert args.provider == 'deepseek'
-        assert args.api_base_url == 'https://api.deepseek.com/v1'
+        assert args.api_base_url is None
 
 
 def test_parse_args_with_provider():
@@ -41,6 +45,15 @@ def test_parse_args_with_provider():
         args = parse_args()
         assert args.provider == 'deepseek'
         assert args.api_base_url == 'https://api.deepseek.com/v1'
+
+
+def test_parse_args_derives_provider_specific_defaults():
+    with patch.object(sys, "argv", ["tiny-harness", "hi", "--provider", "anthropic"]):
+        args = parse_args()
+
+    assert args.model == "claude-sonnet-4-20250514"
+    assert args.api_key_env == "ANTHROPIC_API_KEY"
+    assert args.api_base_url is None
 
 
 def test_parse_args_tui_flag():
@@ -105,7 +118,7 @@ async def test_run_one_shot_handles_tool_events():
 def test_main_routes_to_tui():
     with patch.object(sys, 'argv', ['tiny-harness', '--tui', '--api-key-env', 'FAKE_KEY']):
         with patch.dict('os.environ', {'FAKE_KEY': 'test-key'}):
-            with patch('tiny_harness.cli.asyncio.run') as mock_run:
+            with patch('tiny_harness.cli.asyncio.run', side_effect=_close_coroutine) as mock_run:
                 from tiny_harness.cli import main
                 main()
                 assert mock_run.called
@@ -114,7 +127,34 @@ def test_main_routes_to_tui():
 def test_main_routes_to_session():
     with patch.object(sys, 'argv', ['tiny-harness', '--api-key-env', 'FAKE_KEY']):
         with patch.dict('os.environ', {'FAKE_KEY': 'test-key'}):
-            with patch('tiny_harness.cli.asyncio.run') as mock_run:
+            with patch('tiny_harness.cli.asyncio.run', side_effect=_close_coroutine) as mock_run:
                 from tiny_harness.cli import main
                 main()
                 assert mock_run.called
+
+
+def test_main_allows_explicitly_empty_skills():
+    loaded = []
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            pass
+
+        def set_approval_handler(self, handler):
+            pass
+
+        def load_skill(self, name):
+            loaded.append(name)
+
+    def close_coroutine(coroutine):
+        coroutine.close()
+
+    with patch.object(sys, "argv", [
+        "tiny-harness", "hello", "--skills", "", "--api-key-env", "FAKE_KEY",
+    ]), patch.dict("os.environ", {"FAKE_KEY": "test-key"}), \
+         patch("tiny_harness.Agent", FakeAgent), \
+         patch("tiny_harness.cli.asyncio.run", side_effect=close_coroutine):
+        from tiny_harness.cli import main
+        main()
+
+    assert loaded == []

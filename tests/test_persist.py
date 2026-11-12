@@ -3,6 +3,12 @@ import tempfile
 from tiny_harness._persist import SessionStore
 
 
+def test_session_store_is_publicly_exported():
+    from tiny_harness import SessionStore as PublicSessionStore
+
+    assert PublicSessionStore is SessionStore
+
+
 def test_new_session_creates_id():
     store = SessionStore()
     sid = store.new_session()

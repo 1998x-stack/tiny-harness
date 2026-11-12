@@ -10,16 +10,31 @@ from tiny_harness._hitl import ApprovalDecision, ToolApprovalRequest
 def parse_args() -> Namespace:
     parser = ArgumentParser(prog="tiny-harness", description="AI agent harness with tools and streaming CLI")
     parser.add_argument("prompt", nargs="?", default=None, help="Prompt for one-shot mode")
-    parser.add_argument("--model", "-m", default="deepseek-chat", help="Model identifier")
+    parser.add_argument("--model", "-m", default=None, help="Model identifier")
     parser.add_argument("--workspace", "-w", default=os.getcwd(), help="Workspace directory")
-    parser.add_argument("--provider", default="deepseek", help="LLM provider: anthropic, openai, deepseek")
-    parser.add_argument("--api-base-url", default="https://api.deepseek.com/v1", help="Custom API base URL")
+    parser.add_argument(
+        "--provider",
+        choices=("anthropic", "openai", "deepseek"),
+        default="deepseek",
+        help="LLM provider",
+    )
+    parser.add_argument("--api-base-url", default=None, help="Custom API base URL")
     parser.add_argument("--max-iterations", type=int, default=25, help="Max loop iterations")
-    parser.add_argument("--skills", default="", help="Comma-separated skill names (default: files)")
+    parser.add_argument("--skills", default=None, help="Comma-separated skill names (default: files; empty disables tools)")
     parser.add_argument("--no-hitl", action="store_true", help="Disable human-in-the-loop approval prompts")
     parser.add_argument("--tui", action="store_true", help="Use rich TUI mode (requires 'rich' package)")
-    parser.add_argument("--api-key-env", default="DEEPSEEK_API_KEY", help="Env var for API key")
-    return parser.parse_args()
+    parser.add_argument("--api-key-env", default=None, help="Env var for API key")
+    args = parser.parse_args()
+    defaults = {
+        "deepseek": ("deepseek-chat", "DEEPSEEK_API_KEY"),
+        "openai": ("gpt-4o-mini", "OPENAI_API_KEY"),
+        "anthropic": ("claude-sonnet-4-20250514", "ANTHROPIC_API_KEY"),
+    }
+    if args.provider in defaults:
+        default_model, default_key_env = defaults[args.provider]
+        args.model = args.model or default_model
+        args.api_key_env = args.api_key_env or default_key_env
+    return args
 
 
 def _get_api_key(args: Namespace) -> str:
@@ -74,9 +89,7 @@ async def _run_session(args: Namespace, agent):
             print("Conversation cleared.")
             continue
         if user_input == "/save":
-            agent.start_session()
-            turns = agent._dump_conversation()
-            sid = agent.session_id
+            sid, turns = agent.save_session()
             print(f"Session saved: {sid} ({turns} turns) -> ~/.tiny-harness/sessions/{sid}.jsonl")
             continue
         if user_input == "/history":
@@ -155,9 +168,11 @@ def main():
         agent.set_approval_handler(_cli_approval_handler)
 
     # Load skills from --skills flag, or default to files if none specified
-    skill_names = [s.strip() for s in args.skills.split(",") if s.strip()]
-    if not skill_names:
-        skill_names = ["files"]
+    skill_names = (
+        ["files"]
+        if args.skills is None
+        else [s.strip() for s in args.skills.split(",") if s.strip()]
+    )
     for skill_name in skill_names:
         agent.load_skill(skill_name)
 

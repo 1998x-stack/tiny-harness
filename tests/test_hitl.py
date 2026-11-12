@@ -32,16 +32,16 @@ def test_session_approvals_cascade_upward():
 def test_session_approvals_destructive_not_cascaded():
     sa = SessionApprovals()
     sa.approve_for_session("destructive")
-    assert sa.is_approved("mutation") is True
-    assert sa.is_approved("destructive") is True
+    assert sa.is_approved("mutation") is False
+    assert sa.is_approved("destructive") is False
     assert sa.is_approved("dangerous") is False
 
 
-def test_session_approvals_dangerous_covers_all():
+def test_session_approvals_dangerous_is_not_cached():
     sa = SessionApprovals()
     sa.approve_for_session("dangerous")
     for level in ["safe", "read_only", "mutation", "destructive", "dangerous"]:
-        assert sa.is_approved(level) is True
+        assert sa.is_approved(level) is False
 
 
 def test_session_approvals_clear():
@@ -144,6 +144,24 @@ async def test_check_handler_session_approve():
     assert decision.approved is True
     assert decision.session_approved is True
     assert session.is_approved("mutation") is True
+
+
+@pytest.mark.asyncio
+async def test_dangerous_tools_cannot_be_approved_for_session():
+    calls = 0
+
+    async def handler(req):
+        nonlocal calls
+        calls += 1
+        return ApprovalDecision(approved=True, session_approved=True)
+
+    gate = ApprovalGate(handler=handler)
+
+    await gate.check("run_command", {"command": "pwd"}, "dangerous")
+    await gate.check("run_command", {"command": "pwd"}, "dangerous")
+
+    assert calls == 2
+    assert gate.session.is_approved("dangerous") is False
 
 
 @pytest.mark.asyncio
@@ -367,3 +385,17 @@ async def test_executor_modified_args_reguarded(registry):
     result = await executor.execute("write_file", {"path": "/tmp/original.txt"}, "tc8")
     assert result.success is False
     assert "outside" in result.content.lower() or "denied" in result.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_executor_modified_args_are_revalidated(registry):
+    async def modify_handler(req):
+        return ApprovalDecision(approved=True, modified_args={"path": 123})
+
+    gate = ApprovalGate(handler=modify_handler)
+    executor = ToolExecutor(registry, FilesystemGuard("/tmp"), approval_gate=gate)
+
+    result = await executor.execute("write_file", {"path": "/tmp/original.txt"}, "tc9")
+
+    assert result.success is False
+    assert "invalid arguments" in result.content.lower()

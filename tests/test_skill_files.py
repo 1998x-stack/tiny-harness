@@ -25,12 +25,36 @@ def test_load_files_skill_appends_prompt():
     assert len(updated) > len(original)
 
 
+def test_load_files_skill_updates_conversation_system_prompt():
+    agent = Agent(
+        prompt=Prompt("You are helpful."),
+        config=Config(model="test", api_key="sk-test", workspace="/tmp"),
+    )
+
+    agent.load_skill("files")
+
+    system_message = agent._messages.to_list()[0]
+    assert "File Operations" in system_message["content"]
+
+
 def test_load_skill_not_found():
     prompt = Prompt("test")
     config = Config(model="t", api_key="k", workspace="/tmp")
     agent = Agent(prompt=prompt, config=config)
     with pytest.raises(RuntimeError, match="not found"):
         agent.load_skill("nonexistent_skill_xyz")
+
+
+def test_load_skill_preserves_internal_import_error(tmp_path, monkeypatch):
+    (tmp_path / "broken_skill.py").write_text("import dependency_that_is_missing\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    agent = Agent(
+        prompt=Prompt("test"),
+        config=Config(model="t", api_key="k", workspace="/tmp"),
+    )
+
+    with pytest.raises(ModuleNotFoundError, match="dependency_that_is_missing"):
+        agent.load_skill("broken_skill")
 
 
 def test_load_skill_duplicate_does_not_reregister():
@@ -41,6 +65,18 @@ def test_load_skill_duplicate_does_not_reregister():
     count_before = len(agent.tools.names())
     agent.load_skill("files")
     assert len(agent.tools.names()) == count_before
+
+
+def test_load_skill_aliases_are_idempotent():
+    agent = Agent(
+        prompt=Prompt("test"),
+        config=Config(model="t", api_key="k", workspace="/tmp"),
+    )
+
+    agent.load_skill("files")
+    agent.load_skill("tiny_harness.skills.files")
+
+    assert agent._messages.to_list()[0]["content"].count("## File Operations") == 1
 
 
 def test_load_skill_prompt_accumulates():

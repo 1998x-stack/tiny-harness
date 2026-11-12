@@ -1,4 +1,5 @@
 # tests/test_config.py
+import pytest
 from tiny_harness._config import AgentConfig, Prompt
 
 
@@ -46,3 +47,17 @@ def test_config_provider_default():
     config = AgentConfig(model="m", api_key="k", workspace=".")
     assert config.provider == "deepseek"
     assert config.api_base_url is None
+
+
+def test_agent_config_hides_api_key_from_repr():
+    config = AgentConfig(model="m", api_key="super-secret", workspace=".")
+
+    assert "super-secret" not in repr(config)
+
+
+@pytest.mark.parametrize("field", ["max_iterations", "max_errors", "timeout_ms", "max_tokens"])
+def test_agent_config_rejects_non_positive_limits(field):
+    values = {field: 0}
+
+    with pytest.raises(ValueError, match=field):
+        AgentConfig(model="m", api_key="k", workspace=".", **values)

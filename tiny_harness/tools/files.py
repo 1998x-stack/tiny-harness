@@ -14,6 +14,10 @@ def read_file(args: dict) -> str:
         return f"Error: File '{path}' not found."
     if os.path.isdir(path):
         return f"Error: '{path}' is a directory."
+    with open(path, "rb") as f:
+        sample = f.read(8192)
+    if b"\x00" in sample:
+        return f"[{path}] Binary file ({_format_size(os.path.getsize(path))})."
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     total = len(lines)
@@ -75,14 +79,15 @@ def find_files(args: dict) -> str:
 
     import os as _os
     base = _os.path.realpath(path)
-    search_path = _os.path.join(base, pattern)
     if _os.path.isabs(pattern) or ".." in pattern.split(_os.sep):
-        resolved = _os.path.realpath(search_path) if _os.path.exists(search_path) else _os.path.realpath(base)
-        if not resolved.startswith(base + _os.sep) and resolved != base:
-            return f"Error: pattern '{pattern}' escapes workspace."
+        return f"Error: pattern '{pattern}' escapes workspace."
+    search_path = _os.path.join(base, pattern)
 
-    for i, match in enumerate(glob.glob(search_path, recursive=True)):
-        if i >= max_results:
+    for match in glob.glob(search_path, recursive=True):
+        resolved = _os.path.realpath(match)
+        if resolved != base and not resolved.startswith(base + _os.sep):
+            continue
+        if len(matches) >= max_results:
             break
         matches.append(os.path.relpath(match, path))
     if not matches:

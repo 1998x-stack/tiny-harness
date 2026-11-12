@@ -47,11 +47,11 @@ This uses `difflib.get_close_matches` with a 0.6 cutoff. Names very different fr
 | `mutation` | Checks path is writable within workspace |
 | `destructive` | Strictest — checks path for delete operations |
 
-The guard extracts the path from `args["path"]`, `args["source"]`, or `args["destination"]`. If your tool uses a different key, the guard won't apply.
+The guard validates and canonicalizes every conventional path field present: `path`, `source`, `destination`, and `cwd`. If a custom Tool uses a different key, it must enforce its own path policy.
 
 ### Tool timeouts are per-call, not cumulative
 
-Each tool call has its own timeout (default 30s). A task requiring 10 tool calls can run for 10 × 30 = 300 seconds total. The iteration cap (default 25) is the primary time-gate.
+Each Tool call has its own timeout (default 30s). Synchronous handlers run in a worker thread so they do not block the Agent Loop. Timing out stops waiting; Python cannot forcibly terminate arbitrary work already running in that thread.
 
 ---
 
@@ -69,7 +69,7 @@ Stream failed: 400 'The `reasoning_content` in the thinking mode must be passed 
 
 ### DeepSeek streaming tool calls arrive as deltas
 
-Unlike Anthropic where tool calls arrive complete in a single event, OpenAI-compatible APIs (DeepSeek, OpenAI) stream tool call arguments as JSON fragments. The `OpenAIProvider.generate_stream()` buffers these deltas and emits the complete `ToolCallRequest` at the end.
+Anthropic and OpenAI-compatible APIs stream tool-call arguments as fragments. Each Provider Adapter buffers its native deltas and emits the same complete `ToolCallRequest` at `tool_call_end`.
 
 ### Anthropic uses separate `system` parameter
 
@@ -185,7 +185,7 @@ Negative offsets are clamped to 1. Offsets exceeding file length return an error
 
 ### Shell cwd validated against workspace
 
-The `run_command` tool validates its `cwd` parameter against the workspace boundary. This prevents LLM-injected `cwd="/etc"` from bypassing the FilesystemGuard.
+The ToolExecutor validates and canonicalizes `run_command.cwd` against the configured Workspace before invoking the shell handler.
 
 ### find_files pattern validated against path escapes
 
@@ -359,7 +359,7 @@ Shell builtins (`exit`, `cd`, `export`) work via shell=True fallback since they 
 
 ### `/save` now dumps the full conversation to disk
 
-The `/save` command calls `_dump_conversation()` which serializes all current messages (user prompts, assistant responses, tool calls, tool results) to a JSONL file. Previously, `/save` only initialized the session without writing existing messages — the file would be created empty.
+The `/save` command calls the public `agent.save_session()` Interface. It atomically replaces the JSONL snapshot with the current Conversation, so repeated saves are idempotent.
 
 ### `start_session()` is idempotent
 
@@ -371,24 +371,24 @@ assert sid1 == sid2
 
 Calling `start_session()` multiple times returns the same session ID and does NOT reset `_chat_id`.
 
-### `_save_turn()` is a no-op until `start_session()` is called
+### Active Sessions are snapshotted after each run
 
-Both `agent.run()` and `agent.run_stream()` call `_save_turn()` internally, but it returns early if `_session_id` is None. The CLI/TUI `/save` commands call `start_session()` first. In the Python API, call it explicitly:
+Once a Session has started, `agent.run()` and `agent.run_stream()` snapshot the complete Conversation after each turn, including Tool calls and results. You can also save explicitly:
 
 ```python
 agent.start_session()
 await agent.run("hello")     # turn saved
 await agent.run("world")     # turn saved
-agent._dump_conversation()   # write all to file
+session_id, turns = agent.save_session()
 ```
 
 ### Tool call format differs between memory and storage
 
-Messages store tool calls as `{"function": {"name": ..., "arguments": "..."}}` (LLM format). The SessionStore expects `{"name": ..., "arguments": {...}}` (plain dicts). `_dump_conversation()` handles this conversion internally.
+Messages store tool calls in the common LLM format; Session persistence stores structured arguments and preserves Tool call ids. `save_session()` handles this conversion internally.
 
 ### The loop now adds assistant messages even without tool calls
 
-Previously, when the LLM returned text without calling tools, the assistant response was returned as a string but never added to `_messages`. It's now added via `add_assistant()`, so `_dump_conversation()` sees the complete conversation.
+Final and degraded answers are appended to the Conversation before it is persisted.
 
 ---
 
@@ -437,4 +437,3 @@ config = Config(
     max_tokens=4096,  # limit response size (default: 16384)
 )
 ```
-

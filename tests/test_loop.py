@@ -149,6 +149,7 @@ async def test_loop_max_iterations_triggers_degraded_finish():
     loop = AgentLoop(config, messages, provider, executor, events)
     result = await loop.run("do stuff")
     assert "final_after_degrade" in result
+    assert messages.to_list()[-1] == {"role": "assistant", "content": "final_after_degrade"}
 
 
 @pytest.mark.asyncio
@@ -168,6 +169,31 @@ async def test_loop_error_budget_exhausted_degrade():
     loop = AgentLoop(config, messages, provider, executor, events)
     result = await loop.run("do")
     assert "final_after_degrade" in result
+
+
+@pytest.mark.asyncio
+async def test_error_budget_degrade_completes_all_declared_tool_calls():
+    config = AgentConfig(
+        model="t",
+        api_key="k",
+        workspace="/tmp",
+        max_errors=1,
+        max_consecutive_errors=1,
+    )
+    messages = MessageManager(Prompt("Be helpful."))
+    first = ToolCallRequest(id="t1", name="failing", arguments={})
+    second = ToolCallRequest(id="t2", name="never_run", arguments={})
+    provider = FakeProvider(responses=[[
+        LLMStreamChunk(type="tool_call_end", tool_call=first),
+        LLMStreamChunk(type="tool_call_end", tool_call=second),
+    ]])
+    executor = FakeExecutor(results=[ToolResult.error("t1", "failed")])
+    loop = AgentLoop(config, messages, provider, executor, EventBus())
+
+    await loop.run("do")
+
+    tool_result_ids = [m["tool_call_id"] for m in messages.to_list() if m["role"] == "tool"]
+    assert tool_result_ids == ["t1", "t2"]
 
 
 @pytest.mark.asyncio
@@ -205,6 +231,8 @@ async def test_loop_llm_error_terminates():
     loop = AgentLoop(config, messages, ErrorProvider(), FakeExecutor(), events)
     result = await loop.run("hi")
     assert "LLM error" in result or "stopped" in result.lower()
+    assert messages.to_list()[-1]["role"] == "assistant"
+    assert messages.to_list()[-1]["content"] == result
 
 
 @pytest.mark.asyncio

@@ -59,6 +59,15 @@ def test_agent_config_defaults():
     assert config.max_errors == 10
 
 
+def test_agent_deepseek_default_endpoint():
+    agent = Agent(
+        prompt=Prompt("test"),
+        config=Config(model="deepseek-chat", api_key="k", workspace="/tmp"),
+    )
+
+    assert agent._llm_provider._base_url == "https://api.deepseek.com/v1"
+
+
 def test_agent_config_unknown_provider():
     prompt = Prompt("test")
     config = Config(model="m", api_key="k", workspace=".", provider="unknown")
@@ -86,6 +95,52 @@ async def test_agent_run_stream_yields_events():
             events.append(event.content)
 
     assert "Hello" in "".join(events)
+
+
+@pytest.mark.asyncio
+async def test_agent_run_stream_releases_internal_subscriber():
+    class FakeLLM:
+        async def generate_stream(self, messages, tools=None):
+            from tiny_harness._llm import LLMStreamChunk
+            yield LLMStreamChunk(type="text_delta", content="ok")
+
+    agent = Agent(
+        prompt=Prompt("test"),
+        config=Config(model="test", api_key="k", workspace="/tmp"),
+    )
+    agent._llm_provider = FakeLLM()
+
+    for prompt in ("one", "two"):
+        async for _ in agent.run_stream(prompt):
+            pass
+
+    assert len(agent.events._handlers) == 0
+
+
+@pytest.mark.asyncio
+async def test_closing_agent_stream_cancels_background_run():
+    import asyncio
+
+    class SlowLLM:
+        async def generate_stream(self, messages, tools=None):
+            from tiny_harness._llm import LLMStreamChunk
+            await asyncio.sleep(0.05)
+            yield LLMStreamChunk(type="text_delta", content="late")
+
+    agent = Agent(
+        prompt=Prompt("test"),
+        config=Config(model="test", api_key="k", workspace="/tmp"),
+    )
+    agent._llm_provider = SlowLLM()
+    stream = agent.run_stream("stop")
+
+    first = await anext(stream)
+    assert first.type == "iteration"
+    await stream.aclose()
+    await asyncio.sleep(0.1)
+
+    assert agent._running is False
+    assert [m for m in agent._messages.to_list() if m["role"] == "assistant"] == []
 
 
 @pytest.mark.asyncio
@@ -198,6 +253,40 @@ def test_agent_dump_conversation_writes_user_messages():
     assert records[1]["content"] == "World"
 
 
+def test_agent_dump_conversation_is_idempotent(tmp_path):
+    from tiny_harness._persist import SessionStore
+
+    store = SessionStore(base_dir=str(tmp_path))
+    agent = Agent(
+        prompt=Prompt("test"),
+        config=Config(model="t", api_key="k", workspace="/tmp"),
+        store=store,
+    )
+    agent._messages.add_user("Hello")
+    agent.start_session()
+
+    agent._dump_conversation()
+    agent._dump_conversation()
+
+    assert len(store.load_session(agent.session_id)) == 1
+
+
+def test_agent_save_session_exposes_persistence_interface(tmp_path):
+    from tiny_harness._persist import SessionStore
+
+    agent = Agent(
+        prompt=Prompt("test"),
+        config=Config(model="t", api_key="k", workspace="/tmp"),
+        store=SessionStore(base_dir=str(tmp_path)),
+    )
+    agent._messages.add_user("Hello")
+
+    session_id, turns = agent.save_session()
+
+    assert turns == 1
+    assert agent.store.load_session(session_id)[0]["content"] == "Hello"
+
+
 def test_agent_dump_conversation_with_tool_calls():
     from tiny_harness._llm import ToolCallRequest
     agent = Agent(prompt=Prompt("test"), config=Config(model="t", api_key="k", workspace="/tmp"))
@@ -306,3 +395,83 @@ async def test_agent_save_and_resume_full_cycle():
         assert "user" in roles
         user_msgs = [m for m in msgs if m["role"] == "user"]
         assert any("First question" in m.get("content", "") for m in user_msgs)
+
+
+def test_agent_session_round_trips_tool_call_protocol(tmp_path):
+    import json
+    from tiny_harness._llm import ToolCallRequest
+    from tiny_harness._persist import SessionStore
+
+    store = SessionStore(base_dir=str(tmp_path))
+    config = Config(model="t", api_key="k", workspace="/tmp")
+    agent = Agent(prompt=Prompt("test"), config=config, store=store)
+    agent._messages.add_user("read")
+    agent._messages.add_assistant(
+        "checking",
+        [ToolCallRequest(id="call_original", name="read_file", arguments={"path": "x.txt"})],
+    )
+    full_result = "x" * 500
+    agent._messages.add_tool_result("call_original", full_result)
+    agent.start_session()
+    session_id = agent.session_id
+    agent._dump_conversation()
+
+    restored = Agent(prompt=Prompt("test"), config=config, store=store)
+    restored.resume_session(session_id)
+    messages = restored._messages.to_list()
+    assistant = next(m for m in messages if m["role"] == "assistant")
+    tool_result = next(m for m in messages if m["role"] == "tool")
+
+    assert assistant["tool_calls"][0]["id"] == "call_original"
+    assert json.loads(assistant["tool_calls"][0]["function"]["arguments"]) == {"path": "x.txt"}
+    assert tool_result == {
+        "role": "tool",
+        "tool_call_id": "call_original",
+        "content": full_result,
+    }
+
+
+@pytest.mark.asyncio
+async def test_active_session_persists_complete_tool_turn(tmp_path):
+    from tiny_harness._llm import LLMStreamChunk, ToolCallRequest
+    from tiny_harness._persist import SessionStore
+
+    class ToolLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def generate_stream(self, messages, tools=None):
+            self.calls += 1
+            if self.calls == 1:
+                yield LLMStreamChunk(
+                    type="tool_call_end",
+                    tool_call=ToolCallRequest(id="call_1", name="echo", arguments={"message": "hi"}),
+                )
+            else:
+                yield LLMStreamChunk(type="text_delta", content="done")
+
+    store = SessionStore(base_dir=str(tmp_path))
+    agent = Agent(
+        prompt=Prompt("test"),
+        config=Config(model="t", api_key="k", workspace=str(tmp_path), no_hitl=True),
+        store=store,
+    )
+    agent._llm_provider = ToolLLM()
+    agent.tools.register_tool(
+        name="echo",
+        description="Echo",
+        parameters={
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+        },
+        handler=lambda args: args["message"],
+    )
+    agent.start_session()
+
+    await agent.run("use echo")
+
+    records = store.load_session(agent.session_id)
+    tool_turn = next(record for record in records if record.get("tool_calls"))
+    assert tool_turn["tool_calls"][0]["id"] == "call_1"
+    assert tool_turn["tool_results"][0] == {"id": "call_1", "content": "hi"}

@@ -3,11 +3,11 @@
 **Minimal AI agent harness — wrap any LLM with tools and a streaming CLI.**
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-195%20passed-brightgreen)](https://github.com/1998x-stack/tiny-harness/actions)
-[![Lines](https://img.shields.io/badge/code-1%2C350%20lines-lightgrey)](.)
+[![Tests](https://img.shields.io/badge/tests-271%20passed-brightgreen)](.)
+[![Lines](https://img.shields.io/badge/code-%7E2%2C000%20lines-lightgrey)](.)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-`tiny-harness` is a ~1,100-line Python package that turns an LLM into an AI agent — giving it tools, a conversation loop, streaming events, and a CLI session. One dependency. One import.
+`tiny-harness` is a compact Python package that turns an LLM into an AI agent—giving it tools, a conversation loop, streaming events, and a CLI session.
 
 ```bash
 pip install tiny-harness
@@ -46,8 +46,8 @@ tiny-harness "Create hello.py"
 - **CLI** — session REPL with streaming output, one-shot mode for scripts. Files skill loaded by default.
 - **Rich TUI** — optional `--tui` mode with panels, markdown rendering, color-coded messages (`pip install tiny-harness[tui]`)
 - **Persistence** — JSONL session history with `/save` and `/history` commands
-- **Filesystem guard** — workspace boundary enforcement, path traversal protection
-- **1,125 lines** — readable top-to-bottom, CleanRL-inspired code style
+- **Filesystem guard** — canonical Workspace paths and traversal protection for filesystem-aware Tools
+- **Compact modules** — source modules stay below 350 lines and are readable top-to-bottom
 
 ## Quick Start
 
@@ -142,15 +142,17 @@ Agent.run(prompt)
 
 ```
 tiny_harness/
-├── __init__.py          # Public API: Agent, Prompt, Config, ToolDef
+├── __init__.py          # Public API: Agent, Prompt, Config, ToolDef, SessionStore
 ├── _core.py             # Agent class — orchestrator, session management
 ├── _loop.py             # AgentLoop — state machine, error budget, loop detection
 ├── _llm.py              # LLMProvider ABC + AnthropicProvider + OpenAIProvider
+├── _sse.py              # Provider-native SSE delta decoding
 ├── _messages.py         # MessageManager — conversation, token counting
 ├── _tools.py            # ToolRegistry + ToolExecutor + schema validator
 ├── _config.py           # AgentConfig, Prompt dataclasses
 ├── _events.py           # StreamEvent types + EventBus
 ├── _guard.py            # FilesystemGuard — workspace boundaries
+├── _persist.py          # Atomic JSONL Session snapshots
 ├── cli.py               # CLI entry point
 ├── tools/files.py       # File tool handlers (read, write, list, find, delete, mkdir, move)
 └── skills/files.py      # register(agent) → file tools + prompt instructions
@@ -201,7 +203,7 @@ agent.tools.register_from_def(
         description="Get current weather for a city.",
         parameters={"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
     ),
-    handler=lambda city: f"Sunny, 22°C in {city}",
+    handler=lambda args: f"Sunny, 22°C in {args['city']}",
 )
 
 # Load built-in skills

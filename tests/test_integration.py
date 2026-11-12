@@ -12,7 +12,12 @@ async def test_agent_simple_prompt_no_tools():
         pytest.skip("ANTHROPIC_API_KEY not set")
 
     prompt = Prompt("You are a helpful assistant. Be concise.")
-    config = Config(model="claude-sonnet-4-20250514", api_key=api_key, workspace=os.getcwd())
+    config = Config(
+        model="claude-sonnet-4-20250514",
+        api_key=api_key,
+        workspace=os.getcwd(),
+        provider="anthropic",
+    )
     agent = Agent(prompt=prompt, config=config)
     result = await agent.run("What is 2+2?")
     assert "4" in result

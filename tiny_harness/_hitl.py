@@ -56,6 +56,8 @@ class SessionApprovals:
 
     def approve_for_session(self, risk_level: str) -> None:
         """Approve this risk level and all lower levels for the session."""
+        if risk_level not in ("safe", "read_only", "mutation"):
+            return
         for level in self._RISK_ORDER:
             self._approved_levels.add(level)
             if level == risk_level:

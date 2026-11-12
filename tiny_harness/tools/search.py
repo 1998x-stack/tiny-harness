@@ -16,10 +16,9 @@ def search_content(args: dict) -> str:
                "--glob", "!.git", "--glob", "!__pycache__", "--glob", "!*.pyc"]
         if file_pattern:
             cmd.extend(["--glob", file_pattern])
-        cmd.extend([pattern, path if os.path.isdir(path) else os.path.dirname(path) or "."])
+        cmd.extend([pattern, path])
         result = subprocess.run(
-            cmd,
-            capture_output=True, text=True, timeout=10, cwd=path,
+            cmd, capture_output=True, text=True, timeout=10,
         )
         if result.returncode not in (0, 1):
             raise RuntimeError(result.stderr)

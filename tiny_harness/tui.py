@@ -118,9 +118,7 @@ async def run_tui_session(agent, model: str):
             continue
 
         if prompt == "/save":
-            agent.start_session()
-            turns = agent._dump_conversation()
-            sid = agent.session_id
+            sid, turns = agent.save_session()
             console.print(f"  Saved: {sid}  ({turns} turns)", style=c["ok"])
             console.print()
             continue

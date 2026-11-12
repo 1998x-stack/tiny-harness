@@ -7,6 +7,9 @@ import json
 import asyncio
 import random
 
+from tiny_harness._sse import anthropic_events, openai_events
+from tiny_harness._llm_response import ResponseAdapter
+
 
 @dataclass
 class ToolCallRequest:
@@ -77,7 +80,43 @@ class AnthropicProvider(LLMProvider):
         self._max_tokens = max_tokens
 
     def _convert_messages(self, messages: list[dict]) -> list[dict]:
-        return [m for m in messages if m["role"] != "system"]
+        converted: list[dict] = []
+        for message in messages:
+            role = message["role"]
+            if role == "system":
+                continue
+            if role == "assistant" and message.get("tool_calls"):
+                content = []
+                if message.get("content"):
+                    content.append({"type": "text", "text": message["content"]})
+                for tool_call in message["tool_calls"]:
+                    function = tool_call.get("function", {})
+                    arguments = function.get("arguments", {})
+                    if isinstance(arguments, str):
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            arguments = {}
+                    content.append({
+                        "type": "tool_use",
+                        "id": tool_call.get("id", ""),
+                        "name": function.get("name", ""),
+                        "input": arguments,
+                    })
+                converted.append({"role": "assistant", "content": content})
+            elif role == "tool":
+                block = {
+                    "type": "tool_result",
+                    "tool_use_id": message.get("tool_call_id", ""),
+                    "content": message.get("content", ""),
+                }
+                if converted and converted[-1]["role"] == "user" and isinstance(converted[-1]["content"], list):
+                    converted[-1]["content"].append(block)
+                else:
+                    converted.append({"role": "user", "content": [block]})
+            else:
+                converted.append({"role": role, "content": message.get("content", "")})
+        return converted
 
     def _extract_system(self, messages: list[dict]) -> str:
         for m in messages:
@@ -138,7 +177,7 @@ class AnthropicProvider(LLMProvider):
                         headers={"x-api-key": self._api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                     )
                 if resp.status_code == 200:
-                    return self._parse_response(_ResponseAdapter(resp.json()))
+                    return self._parse_response(ResponseAdapter(resp.json()))
                 if resp.status_code in (429, 529) or resp.status_code >= 500:
                     raise RetryableLLMError(f"Status {resp.status_code}")
                 if resp.status_code in (401, 403):
@@ -165,57 +204,41 @@ class AnthropicProvider(LLMProvider):
         if converted_tools:
             body["tools"] = converted_tools
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST", "https://api.anthropic.com/v1/messages",
-                json=body,
-                headers={"x-api-key": self._api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            ) as response:
-                if response.status_code != 200:
-                    body_bytes = await response.aread()
-                    raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
-                async for line in response.aiter_lines():
-                    parsed = self._parse_sse_line(line)
-                    if parsed is None:
-                        continue
-                    event_type, value = parsed
-                    if event_type == "message_start":
-                        yield LLMStreamChunk(type="usage", content=json.dumps({"input": value.get("message", {}).get("usage", {}).get("input_tokens", 0)}))
-                    elif event_type == "content_block_start":
-                        block = value.get("content_block", {})
-                        if block.get("type") == "tool_use":
-                            yield LLMStreamChunk(type="tool_call_start", content=json.dumps({"id": block["id"], "name": block["name"]}))
-                    elif event_type == "content_block_delta":
-                        delta = value.get("delta", {})
-                        if delta.get("type") == "text_delta":
-                            yield LLMStreamChunk(type="text_delta", content=delta.get("text", ""))
-                        elif delta.get("type") == "input_json_delta":
-                            yield LLMStreamChunk(type="tool_call_delta", content=delta.get("partial_json", ""))
-                    elif event_type == "content_block_stop":
-                        yield LLMStreamChunk(type="tool_call_end")
+        for attempt in range(self._retry_config.max_retries + 1):
+            emitted = False
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with client.stream(
+                        "POST", "https://api.anthropic.com/v1/messages",
+                        json=body,
+                        headers={"x-api-key": self._api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                    ) as response:
+                        if response.status_code != 200:
+                            body_bytes = await response.aread()
+                            if response.status_code in (429, 529) or response.status_code >= 500:
+                                raise RetryableLLMError(f"Status {response.status_code}")
+                            raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
+                        async for chunk in self._stream_chunks(response):
+                            emitted = True
+                            yield chunk
+                        return
+            except (RetryableLLMError, httpx.TimeoutException, httpx.ConnectError) as e:
+                if emitted or attempt == self._retry_config.max_retries:
+                    raise FatalLLMError(f"Stream failed after retries: {e}")
+                delay = min(
+                    self._retry_config.base_delay * (self._retry_config.backoff_factor ** attempt),
+                    self._retry_config.max_delay,
+                )
+                await asyncio.sleep(delay + random.uniform(0, delay * 0.5))
 
-
-class _ResponseAdapter:
-    def __init__(self, data: dict):
-        self.content = [_BlockAdapter(b) for b in data.get("content", [])]
-        self.usage = _UsageAdapter(data.get("usage", {}))
-        self.model = data.get("model", "")
-        self.stop_reason = data.get("stop_reason", "stop")
-
-
-class _BlockAdapter:
-    def __init__(self, data: dict):
-        self.type = data.get("type", "")
-        self.text = data.get("text", "")
-        self.name = data.get("name", "")
-        self.input = data.get("input", {})
-        self.id = data.get("id", "")
-
-
-class _UsageAdapter:
-    def __init__(self, data: dict):
-        self.input_tokens = data.get("input_tokens", 0)
-        self.output_tokens = data.get("output_tokens", 0)
+    async def _stream_chunks(self, response):
+        async for event in anthropic_events(response.aiter_lines(), self._parse_sse_line):
+            tool_call = event.get("tool_call")
+            yield LLMStreamChunk(
+                type=event["type"],
+                content=event.get("content"),
+                tool_call=ToolCallRequest(**tool_call) if tool_call else None,
+            )
 
 
 class OpenAIProvider(LLMProvider):
@@ -286,58 +309,38 @@ class OpenAIProvider(LLMProvider):
         if converted_tools:
             body["tools"] = converted_tools
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST", f"{self._base_url}/chat/completions",
-                json=body,
-                headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
-            ) as response:
-                if response.status_code != 200:
-                    body_bytes = await response.aread()
-                    raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
+        for attempt in range(self._retry_config.max_retries + 1):
+            emitted = False
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with client.stream(
+                        "POST", f"{self._base_url}/chat/completions",
+                        json=body,
+                        headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
+                    ) as response:
+                        if response.status_code != 200:
+                            body_bytes = await response.aread()
+                            if response.status_code in (429, 529) or response.status_code >= 500:
+                                raise RetryableLLMError(f"Status {response.status_code}")
+                            raise FatalLLMError(f"Stream failed: {response.status_code} {body_bytes}")
+                        async for chunk in self._stream_chunks(response):
+                            emitted = True
+                            yield chunk
+                        return
+            except (RetryableLLMError, httpx.TimeoutException, httpx.ConnectError) as e:
+                if emitted or attempt == self._retry_config.max_retries:
+                    raise FatalLLMError(f"Stream failed after retries: {e}")
+                delay = min(
+                    self._retry_config.base_delay * (self._retry_config.backoff_factor ** attempt),
+                    self._retry_config.max_delay,
+                )
+                await asyncio.sleep(delay + random.uniform(0, delay * 0.5))
 
-                tool_buffers: dict[int, dict] = {}
-
-                async for line in response.aiter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        continue
-
-                    delta = data.get("choices", [{}])[0].get("delta", {})
-                    if delta.get("content"):
-                        yield LLMStreamChunk(type="text_delta", content=delta["content"])
-
-                    if delta.get("tool_calls"):
-                        for tc in delta["tool_calls"]:
-                            idx = tc.get("index", 0)
-                            if idx not in tool_buffers:
-                                tool_buffers[idx] = {"id": "", "name": "", "arguments": ""}
-
-                            buf = tool_buffers[idx]
-                            if "id" in tc and tc["id"]:
-                                buf["id"] = tc["id"]
-                            func = tc.get("function", {})
-                            if "name" in func and func["name"]:
-                                buf["name"] = func["name"]
-                                yield LLMStreamChunk(type="tool_call_start", content=json.dumps({"id": buf["id"], "name": buf["name"]}))
-                            if "arguments" in func:
-                                buf["arguments"] += func["arguments"]
-
-                    finish = data.get("choices", [{}])[0].get("finish_reason")
-                    if finish in ("tool_calls", "stop"):
-                        for idx in sorted(tool_buffers.keys()):
-                            buf = tool_buffers[idx]
-                            if buf["name"] and buf["arguments"]:
-                                try:
-                                    args = json.loads(buf["arguments"])
-                                except json.JSONDecodeError:
-                                    args = {}
-                                tc = ToolCallRequest(id=buf["id"] or f"call_{idx}", name=buf["name"], arguments=args)
-                                yield LLMStreamChunk(type="tool_call_end", tool_call=tc)
+    async def _stream_chunks(self, response):
+        async for event in openai_events(response.aiter_lines()):
+            tool_call = event.get("tool_call")
+            yield LLMStreamChunk(
+                type=event["type"],
+                content=event.get("content"),
+                tool_call=ToolCallRequest(**tool_call) if tool_call else None,
+            )

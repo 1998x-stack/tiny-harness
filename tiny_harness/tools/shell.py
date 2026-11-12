@@ -44,13 +44,6 @@ def run_command(args: dict) -> str:
     cwd = args.get("cwd")
     timeout = args.get("timeout", 30)
 
-    if cwd:
-        import os as _os
-        resolved = _os.path.realpath(_os.path.expanduser(cwd))
-        here = _os.path.realpath(".")
-        if _os.path.commonpath([resolved, here]) != here:
-            return f"Error: cwd '{cwd}' is outside workspace."
-
     cmd, use_shell = _build_args(command)
     try:
         result = subprocess.run(

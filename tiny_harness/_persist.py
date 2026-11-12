@@ -24,6 +24,42 @@ class SessionStore:
                   model: str | None = None,
                   iteration: int | None = None,
                   metadata: dict | None = None) -> None:
+        record = self._build_record(
+            session_id, chat_id, role, content, tool_calls, tool_results,
+            token_usage, model, iteration, metadata,
+        )
+        filepath = self._session_path(session_id)
+        with open(filepath, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def replace_session(self, session_id: str, turns: list[dict]) -> None:
+        filepath = self._session_path(session_id)
+        temporary = filepath.with_suffix(".jsonl.tmp")
+        with open(temporary, "w", encoding="utf-8") as f:
+            for chat_id, turn in enumerate(turns, 1):
+                record = self._build_record(
+                    session_id=session_id,
+                    chat_id=chat_id,
+                    role=turn["role"],
+                    content=turn.get("content"),
+                    tool_calls=turn.get("tool_calls"),
+                    tool_results=turn.get("tool_results"),
+                    token_usage=turn.get("token_usage"),
+                    model=turn.get("model"),
+                    iteration=turn.get("iteration"),
+                    metadata=turn.get("metadata"),
+                )
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        os.replace(temporary, filepath)
+
+    def _build_record(self, session_id: str, chat_id: int, role: str,
+                      content: str | None = None,
+                      tool_calls: list | None = None,
+                      tool_results: list | None = None,
+                      token_usage: dict | None = None,
+                      model: str | None = None,
+                      iteration: int | None = None,
+                      metadata: dict | None = None) -> dict:
         record = {
             "session_id": session_id,
             "chat_id": chat_id,
@@ -34,14 +70,14 @@ class SessionStore:
             record["content"] = content
         if tool_calls:
             record["tool_calls"] = [
-                {"name": tc["name"], "arguments": tc.get("arguments", {})}
-                if isinstance(tc, dict) else {"name": tc.name, "arguments": tc.arguments}
+                {"id": tc.get("id", ""), "name": tc["name"], "arguments": tc.get("arguments", {})}
+                if isinstance(tc, dict) else {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in tool_calls
             ]
         if tool_results:
             record["tool_results"] = [
-                {"id": tr.get("tool_call_id", ""), "content": str(tr.get("content", ""))[:200]}
-                if isinstance(tr, dict) else {"id": tr.tool_call_id, "content": str(tr.content)[:200]}
+                {"id": tr.get("id", tr.get("tool_call_id", "")), "content": str(tr.get("content", ""))}
+                if isinstance(tr, dict) else {"id": tr.tool_call_id, "content": str(tr.content)}
                 for tr in tool_results
             ]
         if token_usage:
@@ -52,10 +88,7 @@ class SessionStore:
             record["iteration"] = iteration
         if metadata:
             record["metadata"] = metadata
-
-        filepath = self._session_path(session_id)
-        with open(filepath, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return record
 
     def load_session(self, session_id: str) -> list[dict]:
         filepath = self._session_path(session_id)

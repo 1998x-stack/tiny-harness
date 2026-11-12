@@ -1,11 +1,11 @@
 # tiny_harness/_config.py
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class AgentConfig:
     model: str
-    api_key: str
+    api_key: str = field(repr=False)
     workspace: str
     provider: str = "deepseek"
     api_base_url: str | None = None
@@ -18,6 +18,20 @@ class AgentConfig:
     require_approval_for: list[str] | None = None
     approval_timeout_ms: int = 120_000
     no_hitl: bool = False
+
+    def __post_init__(self) -> None:
+        positive_limits = (
+            "max_iterations",
+            "max_errors",
+            "max_consecutive_errors",
+            "timeout_ms",
+            "max_tool_result_chars",
+            "max_tokens",
+            "approval_timeout_ms",
+        )
+        for name in positive_limits:
+            if getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be positive")
 
 
 class Prompt:

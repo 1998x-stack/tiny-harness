@@ -58,6 +58,17 @@ def test_read_file_limit_zero(tmpdir):
     assert "limit must be positive" in result
 
 
+def test_read_file_describes_binary_content(tmpdir):
+    path = os.path.join(tmpdir, "image.bin")
+    with open(path, "wb") as file:
+        file.write(b"\x00\x01\x02")
+
+    result = read_file({"path": path})
+
+    assert "binary" in result.lower()
+    assert "3B" in result
+
+
 def test_list_directory_recursive_with_hidden(tmpdir):
     hidden = os.path.join(tmpdir, ".hidden_dir")
     os.makedirs(hidden)
@@ -69,6 +80,12 @@ def test_list_directory_recursive_with_hidden(tmpdir):
 def test_find_files_recursive():
     result = find_files({"pattern": "**/*.py", "path": "tiny_harness"})
     assert ".py" in result.lower() or "No files" in result
+
+
+def test_find_files_rejects_absolute_glob(tmpdir):
+    result = find_files({"pattern": "/etc/*", "path": tmpdir})
+
+    assert result.startswith("Error:")
 
 
 def test_delete_readonly_file(tmpdir):

@@ -3,22 +3,22 @@
 ## Setup
 
 ```bash
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
 
 ### Running tests
 ```bash
 # All unit tests (excludes integration tests needing API keys)
-pytest tests/ --ignore=tests/test_integration.py
+python -m pytest tests/ --ignore=tests/test_integration.py
 
 # Single test file
-pytest tests/test_tools.py -v
+python -m pytest tests/test_tools.py -v
 
 # Single test
-pytest tests/test_tools.py::test_execute_tool_timeout -v
+python -m pytest tests/test_tools.py::test_execute_tool_timeout -v
 
 # Integration tests (needs ANTHROPIC_API_KEY or DEEPSEEK_API_KEY)
-pytest tests/test_integration.py -v -m integration
+python -m pytest tests/test_integration.py -v -m integration
 
 # Run the agent CLI
 python -m tiny_harness "hello"
@@ -35,18 +35,17 @@ ruff check --fix tiny_harness/ tests/
 
 ## Architecture
 
-**Public API** (`tiny_harness/__init__.py`): `Agent`, `Prompt`, `Config`, `ToolDef`
+**Public API** (`tiny_harness/__init__.py`): `Agent`, `Prompt`, `Config`, `ToolDef`, `SessionStore`
 
 **Module dependency order** (no cycles):
 ```
-_config.py → _events.py → _guard.py → _llm.py → _messages.py → _tools.py → _loop.py → _core.py
-   ↑                                                                                    │
-   └─── cli.py, tui.py import only _core.py (never modules directly) ───────────────────┘
+_config.py → _events.py → _guard.py → _sse.py/_llm_response.py → _llm.py
+     → _messages.py → _hitl.py/_tools.py → _loop.py/_persist.py → _core.py
 ```
 
-- `_core.py` (117 lines) — Agent class, the only integrator. Creates all components at `__init__`. Never add new cross-module wiring elsewhere.
-- `_loop.py` (109 lines) — AgentLoop state machine. Zero intelligence: calls LLM, executes tools, loops. Never add planning logic here.
-- `_llm.py` (341 lines) — All provider code (AnthropicProvider + OpenAIProvider + types). If adding a new provider, match the `LLMProvider` ABC.
+- `_core.py` (~300 lines) — Agent class, the only integrator. Creates all components at `__init__`. Never add new cross-module wiring elsewhere.
+- `_loop.py` (~130 lines) — AgentLoop state machine. Zero intelligence: calls LLM, executes tools, loops. Never add planning logic here.
+- `_llm.py` (~350 lines) — Provider adapters and types; SSE decoding lives in `_sse.py`. New providers must match `LLMProvider`.
 - `tools/` and `skills/` — each is standalone. `tools/` has handlers (`def my_tool(args: dict) -> str`). `skills/` has `register(agent)` that wires tools + prompt sections together.
 
 ---
@@ -55,7 +54,7 @@ _config.py → _events.py → _guard.py → _llm.py → _messages.py → _tools.
 
 | Term | Meaning |
 |---|---|
-| Agent | The whole runtime. Created, given tasks, discarded. |
+| Agent | The whole runtime, scoped to a Session and reusable across multiple `run()` calls. |
 | Agent Core | Loop + Messages + Config + LLMProvider + empty ToolRegistry. Zero tools built in. |
 | Tool | External plugin registered into ToolRegistry. Handler signature: `def handler(args: dict) -> str`. |
 | Prompt | First-class artifact, separate from `Config`. `Prompt("base").append("section")`. |
@@ -111,11 +110,15 @@ _config.py → _events.py → _guard.py → _llm.py → _messages.py → _tools.
 | `tiny_harness/_core.py` | Agent class — orchestrator |
 | `tiny_harness/_loop.py` | AgentLoop — while-loop state machine |
 | `tiny_harness/_llm.py` | All LLM providers + types |
+| `tiny_harness/_sse.py` | Anthropic/OpenAI SSE decoding and tool-call buffering |
+| `tiny_harness/_llm_response.py` | Anthropic response object adapters |
 | `tiny_harness/_tools.py` | ToolRegistry, ToolExecutor, schema validator, ToolResult |
 | `tiny_harness/_messages.py` | MessageManager, TokenBudget |
 | `tiny_harness/_config.py` | AgentConfig, Prompt |
 | `tiny_harness/_events.py` | StreamEvent, EventBus |
 | `tiny_harness/_guard.py` | FilesystemGuard |
+| `tiny_harness/_hitl.py` | Human approval policy and session approvals |
+| `tiny_harness/_persist.py` | Atomic JSONL Session persistence |
 | `tiny_harness/cli.py` | CLI entry point |
 | `tiny_harness/tui.py` | Rich TUI mode |
 | `tiny_harness/tools/files.py` | File tool handlers (7 tools) |

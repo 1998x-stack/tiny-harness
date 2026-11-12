@@ -64,3 +64,6 @@ class MessageManager:
     def clear(self) -> None:
         system = self.messages[0]
         self.messages = [system]
+
+    def update_prompt(self, prompt: Prompt) -> None:
+        self.messages[0] = {"role": "system", "content": prompt.to_string()}

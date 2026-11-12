@@ -41,6 +41,11 @@ def test_names(registry):
     assert "failing" in names
 
 
+def test_tool_definition_rejects_unknown_risk_level():
+    with pytest.raises(ValueError, match="risk level"):
+        ToolDef(name="unsafe", description="", parameters={}, risk_level="typo")
+
+
 @pytest.mark.asyncio
 async def test_execute_returns_success_result(registry):
     guard = FilesystemGuard("/tmp")
@@ -87,6 +92,63 @@ async def test_execute_tool_timeout(registry):
     result = await executor.execute("slow", {}, "tc1")
     assert result.success is False
     assert "timed out" in result.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_execute_sync_tool_timeout(registry):
+    import time
+
+    def slow_handler(args):
+        time.sleep(0.2)
+        return "done"
+
+    registry.register_from_def(
+        ToolDef(name="slow_sync", description="Slow sync tool", parameters={"type": "object", "properties": {}}),
+        slow_handler,
+    )
+    executor = ToolExecutor(registry, FilesystemGuard("/tmp"), timeout_ms=10, max_output_chars=100)
+
+    started = time.monotonic()
+    result = await executor.execute("slow_sync", {}, "tc1")
+
+    assert result.success is False
+    assert "timed out" in result.content.lower()
+    assert time.monotonic() - started < 0.1
+
+
+@pytest.mark.asyncio
+async def test_execute_builtin_error_string_is_failure(tmp_path):
+    from tiny_harness.tools.files import read_file
+
+    registry = ToolRegistry()
+    registry.register_from_def(
+        ToolDef(
+            name="read_file",
+            description="Read",
+            parameters={
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+        ),
+        read_file,
+    )
+    executor = ToolExecutor(registry, FilesystemGuard(str(tmp_path)))
+
+    result = await executor.execute("read_file", {"path": "missing.txt"}, "tc1")
+
+    assert result.success is False
+    assert "not found" in result.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_execute_rejects_non_object_arguments(registry):
+    executor = ToolExecutor(registry, FilesystemGuard("/tmp"))
+
+    result = await executor.execute("echo", ["not", "an", "object"], "tc1")
+
+    assert result.success is False
+    assert "object" in result.content.lower()
 
 
 @pytest.mark.asyncio
@@ -185,6 +247,75 @@ async def test_execute_sync_handler(registry):
     assert "HELLO" in result.content
 
 
+@pytest.mark.asyncio
+async def test_execute_resolves_relative_path_against_workspace(tmp_path, monkeypatch):
+    from tiny_harness.tools.files import write_file
+
+    workspace = tmp_path / "workspace"
+    process_cwd = tmp_path / "process-cwd"
+    workspace.mkdir()
+    process_cwd.mkdir()
+    monkeypatch.chdir(process_cwd)
+    registry = ToolRegistry()
+    registry.register_from_def(
+        ToolDef(
+            name="write_file",
+            description="Write",
+            parameters={
+                "type": "object",
+                "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+                "required": ["path", "content"],
+            },
+            risk_level="mutation",
+        ),
+        write_file,
+    )
+    executor = ToolExecutor(registry, FilesystemGuard(str(workspace)))
+
+    result = await executor.execute("write_file", {"path": "note.txt", "content": "safe"}, "tc1")
+
+    assert result.success is True
+    assert (workspace / "note.txt").read_text() == "safe"
+    assert not (process_cwd / "note.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_execute_guards_every_path_for_move(tmp_path):
+    from tiny_harness.tools.files import move_file
+
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "outside"
+    workspace.mkdir()
+    outside.mkdir()
+    source = workspace / "source.txt"
+    source.write_text("keep")
+    registry = ToolRegistry()
+    registry.register_from_def(
+        ToolDef(
+            name="move_file",
+            description="Move",
+            parameters={
+                "type": "object",
+                "properties": {"source": {"type": "string"}, "destination": {"type": "string"}},
+                "required": ["source", "destination"],
+            },
+            risk_level="mutation",
+        ),
+        move_file,
+    )
+    executor = ToolExecutor(registry, FilesystemGuard(str(workspace)))
+
+    result = await executor.execute(
+        "move_file",
+        {"source": str(source), "destination": str(outside / "moved.txt")},
+        "tc1",
+    )
+
+    assert result.success is False
+    assert source.exists()
+    assert not (outside / "moved.txt").exists()
+
+
 def test_validate_schema_required_missing():
     schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
     errors = validate_schema(schema, {})
@@ -195,6 +326,15 @@ def test_validate_schema_required_missing():
 def test_validate_schema_wrong_type():
     schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
     errors = validate_schema(schema, {"x": "not_an_int"})
+    assert len(errors) == 1
+    assert "integer" in errors[0]
+
+
+def test_validate_schema_rejects_boolean_as_integer():
+    schema = {"type": "object", "properties": {"count": {"type": "integer"}}}
+
+    errors = validate_schema(schema, {"count": True})
+
     assert len(errors) == 1
     assert "integer" in errors[0]
 
